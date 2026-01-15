@@ -12,7 +12,6 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,9 +21,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-// --- NUEVA IMPORTACIÓN NECESARIA PARA CORREGIR EL ERROR ASYNC ---
-import kotlinx.coroutines.coroutineScope
-// ----------------------------------------------------------------
 
 // --- (Constantes de ángulo y claves de estado... sin cambios) ---
 private val angleStep = (2 * Math.PI.toFloat() / 7)
@@ -38,7 +34,7 @@ private const val EXPANSION_FINISHED_KEY = "isExpansionFinished"
 // --- (Fin Constantes) ---
 
 
-// --- ESTRUCTURAS DE DATOS (Necesarias para Ktor) ---
+// --- ESTRUCTURAS DE DATOS ---
 @Serializable
 data class CarouselItem(
     val imageUrl: String? = null,
@@ -84,6 +80,7 @@ class HomeViewModel(
 
     // --- (CONSTANTES DE URL) ---
     private val BASE_URL = "https://mentat-music.com/mentapp/"
+    // ÚNICA FUENTE DE VERDAD:
     private val DEF_JSON_URL = BASE_URL + "mentat_data_DEF.json"
 
     private val _currentPage = mutableIntStateOf(0)
@@ -99,46 +96,24 @@ class HomeViewModel(
         }
     }
 
-    // --- 2. FLUJO DE DATOS REACTIVO (CON FUSIÓN Y CORRECCIÓN DE ARRAY) ---
+    // --- 2. FLUJO DE DATOS REACTIVO (SIMPLIFICADO) ---
+    // Eliminada la lógica de fusión y doble llamada.
     val appState: StateFlow<AppState> = _currentLanguage
         .flatMapLatest { lang ->
-            // Determinar el archivo de entradas traducidas
-            val translatedFile = when (lang) {
-                Language.ES -> "entradas_es.json"
-                Language.EN -> "entradas_en.json"
-            }
-
             flow {
                 emit(AppState.Loading)
 
                 try {
-                    // UTILIZAMOS coroutineScope PARA PROPORCIONAR EL ÁMBITO A ASYNC
-                    coroutineScope {
-                        // 1. Carga los datos base (todo lo demás)
-                        val baseDataJob = async {
-                            ktorClient.get(DEF_JSON_URL).body<AppData>()
-                        }
+                    // LLAMADA ÚNICA Y LIMPIA
+                    // Descargamos el objeto completo (AppData) del archivo DEF.
+                    // Ya no buscamos archivos que no existen (404).
+                    val data = ktorClient.get(DEF_JSON_URL).body<AppData>()
 
-                        // 2. Carga SOLO las entradas (corregido el error [ vs { )
-                        val translatedEntriesJob = async {
-                            ktorClient.get(BASE_URL + translatedFile).body<List<CarouselItem>>()
-                        }
-
-                        // Esperar resultados
-                        val baseData = baseDataJob.await()
-                        val translatedEntries = translatedEntriesJob.await()
-
-                        // 3. FUSIÓN
-                        val finalData = baseData.copy(
-                            Concepto = translatedEntries // Reemplaza la lista Concepto
-                        )
-
-                        emit(AppState.Success(finalData))
-                    } // Fin de coroutineScope
+                    emit(AppState.Success(data))
 
                 } catch (e: Exception) {
-                    Log.e("HomeViewModel", "Error cargando datos para idioma $lang", e)
-                    emit(AppState.Error("Error al cargar datos. Inténtalo de nuevo."))
+                    Log.e("HomeViewModel", "Error cargando datos (Idioma: $lang)", e)
+                    emit(AppState.Error("Error al cargar datos. Comprueba tu conexión."))
                 }
             }
         }
@@ -158,7 +133,7 @@ class HomeViewModel(
         ktorClient.close()
     }
 
-    // [El resto de las funciones del ViewModel para gestión de estado de UI siguen aquí]
+    // [Gestión de estado de UI]
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) {
         savedStateHandle[ROTATION_KEY] = angle

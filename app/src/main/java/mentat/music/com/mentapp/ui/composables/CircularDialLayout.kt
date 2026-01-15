@@ -5,13 +5,13 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -19,18 +19,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import mentat.music.com.mentapp.R
-import mentat.music.com.mentapp.ui.navigation.AppScreens
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-import mentat.music.com.mentapp.ui.composables.TRANSITION_DURATION
 
 // --- (data class MenuItem y menuItems - sin cambios) ---
 data class MenuItem(
@@ -44,7 +43,8 @@ val menuItems = listOf(
     MenuItem("Spotify", R.drawable.ic_menu_streams, "spotify_screen", Color(0xFF1DB954)),
     MenuItem("Social", R.drawable.ic_menu_social, "https://bsky.app/profile/juanmentat.bsky.social", Color(0xFF0085FF)),
     MenuItem("YouTube", R.drawable.ic_menu_youtube, "youtube_screen", Color(0xFFFF0000)),
-    MenuItem("Entradas", R.drawable.ic_menu_concept, "https://www.mentat-music.com/site/concepto/", Color(0xFF8A2BE2)),    MenuItem("Bandcamp", R.drawable.ic_menu_bandcamp, "bandcamp_screen", Color(0xFF629AA9)),
+    MenuItem("Entradas", R.drawable.ic_menu_concept, "https://www.mentat-music.com/site/concepto/", Color(0xFF8A2BE2)),
+    MenuItem("Bandcamp", R.drawable.ic_menu_bandcamp, "bandcamp_screen", Color(0xFF629AA9)),
     MenuItem("Soundcloud", R.drawable.ic_menu_soundcloud, "soundcloud_screen", Color(0xFFFF5500))
 )
 val angleStep = (2 * Math.PI.toFloat() / menuItems.size)
@@ -74,7 +74,7 @@ fun CircularDialLayout(
         content = {
             menuItems.forEachIndexed { index, item ->
 
-                // --- (Lógica de ángulo y estado - sin cambios) ---
+                // --- LÓGICA DE ÁNGULO Y ESTADO ---
                 val angle = (angleStep * index) + currentRotation
                 val normalizedAngle = (angle % (2 * Math.PI.toFloat()) + 2 * Math.PI.toFloat()) % (2 * Math.PI.toFloat())
                 val targetAngleNorm = (targetAngleRad % (2 * Math.PI.toFloat()) + 2 * Math.PI.toFloat()) % (2 * Math.PI.toFloat())
@@ -82,20 +82,36 @@ fun CircularDialLayout(
                 val isActive = (diff < 0.05f || abs(diff - 2 * Math.PI.toFloat()) < 0.05f)
                 val isClickedIcon = (index == clickedIconIndex)
 
-                // --- (Lógica de animación de tamaño - sin cambios) ---
-                val targetSize = when {
+                // --- TAMAÑOS ---
+                // 1. Tamaño del Icono Real
+                val targetIconSize = when {
                     isAnimatingOut && isClickedIcon -> 1000.dp
                     isAnimatingOut && !isClickedIcon -> 48.dp
-                    isActive -> 64.dp // <-- Tu valor actual (64dp)
+                    isActive -> 64.dp
                     else -> 48.dp
                 }
-                val animatedSize by animateDpAsState(
-                    targetValue = targetSize,
+                val animatedIconSize by animateDpAsState(
+                    targetValue = targetIconSize,
                     animationSpec = tween(durationMillis = TRANSITION_DURATION),
-                    label = "sizeAnimation"
+                    label = "iconSizeAnimation"
                 )
 
-                // --- (Animación de alfa - sin cambios) ---
+                // ==========================================================
+                // --- AJUSTE FINO AQUÍ ---
+                // ==========================================================
+
+                // 1. ESPACIO EXTRA: Aquí defines cuánto más grande es la caja invisible.
+                // Cuanto más grande, menos se recorta la sombra.
+                // (64dp de icono + 40dp extra = 104dp de caja total)
+                val extraSpaceForShadow = 80.dp
+
+                // 2. ESCALA DE LA SOMBRA: Hacemos la sombra un poco más pequeña (0.85f = 85%)
+                // Esto ayuda a esconder los bordes cuadrados duros del PNG detrás del icono real.
+                val shadowScale = 0.85f
+
+                val containerSize = animatedIconSize + extraSpaceForShadow
+
+                // --- ANIMACIÓN DE APARICIÓN ---
                 val containerTargetAlpha = when {
                     isAnimatingOut && !isClickedIcon -> 0.0f
                     else -> 1.0f
@@ -106,59 +122,44 @@ fun CircularDialLayout(
                     label = "containerAlpha"
                 )
 
-                // --- El Contenedor Box ---
+                // --- CAJA PRINCIPAL (EL CONTENEDOR GRANDE) ---
                 Box(
                     modifier = Modifier
                         .alpha(containerAnimatedAlpha)
-                        .size(animatedSize)
+                        .size(containerSize) // Usamos el tamaño con extra de espacio
                         .then(if (isActive && !isAnimatingOut) Modifier.clickable {
                             onIconClick(item.route, index)
                         } else Modifier),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center // Todo centrado
                 ) {
 
                     // ==========================================================
-                    // --- ¡¡¡INICIO DEL ARREGLO DE SOMBRA!!! ---
+                    // --- SOMBRA AJUSTADA ---
                     // ==========================================================
                     if (!isAnimatingOut) {
-                        Box(
+                        Icon(
+                            painter = painterResource(id = item.iconResId),
+                            contentDescription = null,
+                            tint = Color.Black.copy(alpha = 0.5f), // Color de la sombra
                             modifier = Modifier
-                                .fillMaxSize(0.9f)
-                                .offset(x = 6.dp, y = 6.dp)
+                                .size(animatedIconSize) // Tamaño base
+                                .scale(shadowScale)     // <--- TRUCO: La hacemos un pelín más pequeña
+                                .offset(x = 6.dp, y = 6.dp) // Desplazamiento
                                 .then(
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        // --- API 31+ (Android 12): BLUR (Funciona bien) ---
-                                        Modifier
-                                            .clip(CircleShape)
-                                            .background(Color.Black.copy(alpha = 0.2f))
-                                            .blur(24.dp)
+                                        Modifier.blur(4.dp) // Difuminado
                                     } else {
-                                        // --- API < 31 (Android 11 o menos): SHADOW (¡FIX!) ---
-                                        // Añadimos la superficie (clip y background) para que la sombra se proyecte.
                                         Modifier
-                                            .clip(CircleShape) // <-- Restaurado
-                                            .background(Color.Black.copy(alpha = 0.2f)) // <-- ¡SUPERFICIE BASE!
-                                            .shadow(
-                                                elevation = 24.dp, // Subido
-                                                shape = CircleShape,
-                                                clip = false,
-                                                spotColor = Color.Black.copy(alpha = 0.5f), // Subido
-                                                ambientColor = Color.Black.copy(alpha = 0.5f) // Subido
-                                            )
                                     }
                                 )
                         )
                     }
-                    // ==========================================================
-                    // --- ¡¡¡FIN DEL ARREGLO DE SOMBRA!!! ---
-                    // ==========================================================
 
-
-                    // --- (Contenido - sin cambios) ---
+                    // --- EL ICONO REAL (CONTENIDO) ---
+                    // IMPORTANTE: Este Box tiene el tamaño exacto del icono original
+                    // para que 'contentFor' no se pierda.
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
+                        modifier = Modifier.size(animatedIconSize)
                     ) {
                         contentFor(
                             item,
@@ -171,7 +172,7 @@ fun CircularDialLayout(
             }
         }
     ) { measurables, constraints ->
-        // --- (Lógica de Layout y 'placeRelative' - sin cambios) ---
+        // --- LÓGICA DE LAYOUT (Sin cambios) ---
         val placables = measurables.map {
             it.measure(constraints.copy(minWidth = 0, minHeight = 0))
         }

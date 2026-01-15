@@ -54,7 +54,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -325,7 +324,7 @@ fun HomeScreen(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd) // O TopStart, ajusta según el diseño
-                        .padding(top = 24.dp, end = 80.dp) // Ajustar padding para que no choque con Power
+                        .padding(top = 35.dp, end = 80.dp)
                         .clickable {
                             // Llama a la función del ViewModel que dispara la recarga de datos
                             homeViewModel.toggleLanguage()
@@ -410,12 +409,27 @@ fun HomeScreen(
                                 animationSpec = tween(durationMillis = TRANSITION_DURATION),
                                 label = "iconContentAlpha"
                             )
+                            val myFilter = if (isActive || isAnimatingOut) {
+                                null
+                            } else {
+                                remember {
+                                    ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+                                        0.35f, 0f, 0f, 0f, 70f, // Rojo mult 0.6 + offset 70
+                                        0f, 0.35f, 0f, 0f, 70f, // Verde mult 0.6 + offset 70
+                                        0f, 0f, 0.35f, 0f, 70f, // Azul mult 0.6 + offset 70
+                                        0f, 0f, 0f, 1f, 0f     // Alpha intacto
+                                    )))
+                                }
+                            }
+
                             Image(
                                 painter = painterResource(id = item.iconResId),
                                 contentDescription = item.name,
                                 contentScale = ContentScale.Fit,
-                                colorFilter = if (isActive || isAnimatingOut) null else desaturationFilter,
-                                modifier = Modifier.fillMaxSize().alpha(iconAnimatedAlpha)
+                                colorFilter = myFilter, // <--- Matriz aplicada aquí
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .alpha(iconAnimatedAlpha)
                             )
                         }
                     )

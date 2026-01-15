@@ -71,4 +71,6 @@ dependencies {
     implementation(libs.ktor.serializationKotlinxJson)
     implementation(libs.kotlinx.serializationJson)
     implementation(libs.glide.compose)
+
+
 }
