@@ -115,6 +115,7 @@ fun HomeScreen(
     val isAnimatingOut by homeViewModel.isAnimatingOut.collectAsState()
     val clickedIconIndex by homeViewModel.clickedIconIndex.collectAsState()
     val isExpansionFinished by homeViewModel.isExpansionFinished.collectAsState()
+    val newsPosts by homeViewModel.newsPosts.collectAsState()
 
 
 
@@ -451,7 +452,9 @@ fun HomeScreen(
 
             if (appData != null && clickedItemName != null) {
                 when (clickedItemName) {
+                    // 1. GUZZ VUELVE A SU SITIO (JSON)
                     "GUZZ" -> carouselData = appData.GUZZ
+
                     "Spotify" -> carouselData = appData.Spotify
                     "Bandcamp" -> carouselData = appData.Bandcamp
                     "Soundcloud" -> carouselData = appData.Soundcloud
@@ -460,8 +463,37 @@ fun HomeScreen(
                             item.copy(imageUrl = "https://img.youtube.com/vi/${item.imageUrl}/0.jpg")
                         }
                     }
-                    // AJUSTE 2: Usamos "Entradas" para acceder a la lista "Concepto"
-                    "Entradas" -> conceptDataAsCarousel = appData.Concepto
+
+                    // 2. LAS NOTICIAS SE VAN A "ENTRADAS" (ROOM / RSS)
+                    // 2. LAS NOTICIAS SE VAN A "ENTRADAS" (ROOM / RSS)
+                    "Entradas" -> {
+                        conceptDataAsCarousel = newsPosts.map { entity ->
+                            // LIMPIEZA DE HTML:
+                            // 1. Html.fromHtml quita las etiquetas (<p>, <b>, etc).
+                            // 2. toString() lo convierte a texto.
+                            // 3. replace(...) quita saltos de línea extra para que quede compacto.
+                            // 4. take(150) coge solo los primeros 150 caracteres.
+                            val plainText = android.text.Html.fromHtml(entity.content, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+                                .replace("\uFFFC", "")
+                                .replace("\n", " ")
+                                .trim()
+
+                            // Si el texto es muy largo, añadimos "..." al final
+                            val maxLength = 200
+                            val snippet = if (plainText.length > maxLength) {
+                                plainText.take(maxLength).substringBeforeLast(" ") + "..."
+                            } else {
+                                plainText
+                            }
+
+                            CarouselItem(
+                                title = entity.title,
+                                imageUrl = entity.imageUrl,
+                                targetUrl = entity.link,
+                                artist = snippet // <--- AQUÍ PONEMOS EL RESUMEN
+                            )
+                        }
+                    }
                 }
             }
 

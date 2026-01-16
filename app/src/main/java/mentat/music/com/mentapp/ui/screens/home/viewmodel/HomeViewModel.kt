@@ -1,28 +1,33 @@
 package mentat.music.com.mentapp.ui.screens.home.viewmodel
 
+import android.app.Application
 import android.util.Log
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import mentat.music.com.mentapp.data.PostEntity
+import mentat.music.com.mentapp.data.local.AppDatabase
+import mentat.music.com.mentapp.data.repository.PostRepository
 
-// --- (Constantes de ángulo y claves de estado... sin cambios) ---
+// --- CONSTANTES ---
 private val angleStep = (2 * Math.PI.toFloat() / 7)
 private val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 private val BANDCAMP_START_ANGLE = targetAngleRad - (angleStep * 5)
@@ -31,8 +36,6 @@ private const val ROTATION_KEY = "rotationAngle"
 private const val ANIMATING_OUT_KEY = "isAnimatingOut"
 private const val CLICKED_INDEX_KEY = "clickedIconIndex"
 private const val EXPANSION_FINISHED_KEY = "isExpansionFinished"
-// --- (Fin Constantes) ---
-
 
 // --- ESTRUCTURAS DE DATOS ---
 @Serializable
@@ -46,7 +49,7 @@ data class CarouselItem(
 
 @Serializable
 data class AppData(
-    val GUZZ: List<CarouselItem>? = null,
+    val GUZZ: List<CarouselItem>? = null, // Esto lo sustituiremos pronto por 'newsPosts'
     val Spotify: List<CarouselItem>? = null,
     val Bandcamp: List<CarouselItem>? = null,
     val Soundcloud: List<CarouselItem>? = null,
@@ -60,96 +63,96 @@ sealed class AppState {
     data class Error(val message: String) : AppState()
 }
 
-// -----------------------------------------------------------
-// --- EL VIEWMODEL ---
-// -----------------------------------------------------------
 class HomeViewModel(
+    application: Application,
     private val savedStateHandle: SavedStateHandle
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
-    // --- 1. LÓGICA DE IDIOMA ENCAPSULADA ---
+    // --- BASE DE DATOS Y REPOSITORIO ---
+    private val database = AppDatabase.getDatabase(application)
+    private val repository = PostRepository(database.postDao())
+
+    // --- IDIOMA ---
     enum class Language { ES, EN }
     private val _currentLanguage = MutableStateFlow(Language.ES)
     val currentLanguage: StateFlow<Language> = _currentLanguage.asStateFlow()
 
-    fun toggleLanguage() {
-        val newLang = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        _currentLanguage.value = newLang
-    }
-    // ------------------------------------------
-
-    // --- (CONSTANTES DE URL) ---
-    private val BASE_URL = "https://mentat-music.com/mentapp/"
-    // ÚNICA FUENTE DE VERDAD:
-    private val DEF_JSON_URL = BASE_URL + "mentat_data_DEF.json"
-
-    private val _currentPage = mutableIntStateOf(0)
-    val currentPage: State<Int> = _currentPage
-
-    // --- (Lógica de Ktor) ---
-    private val ktorClient = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                coerceInputValues = true
-            })
-        }
-    }
-
-    // --- 2. FLUJO DE DATOS REACTIVO (SIMPLIFICADO) ---
-    // Eliminada la lógica de fusión y doble llamada.
-    val appState: StateFlow<AppState> = _currentLanguage
+    // --- NUEVO: FLUJO DE NOTICIAS REALES (ROOM) ---
+    // Esta variable observa el idioma y devuelve automáticamente la lista correcta de la BD
+    val newsPosts: StateFlow<List<PostEntity>> = _currentLanguage
         .flatMapLatest { lang ->
-            flow {
-                emit(AppState.Loading)
-
-                try {
-                    // LLAMADA ÚNICA Y LIMPIA
-                    // Descargamos el objeto completo (AppData) del archivo DEF.
-                    // Ya no buscamos archivos que no existen (404).
-                    val data = ktorClient.get(DEF_JSON_URL).body<AppData>()
-
-                    emit(AppState.Success(data))
-
-                } catch (e: Exception) {
-                    Log.e("HomeViewModel", "Error cargando datos (Idioma: $lang)", e)
-                    emit(AppState.Error("Error al cargar datos. Comprueba tu conexión."))
-                }
-            }
+            val langCode = if (lang == Language.ES) "es" else "en"
+            repository.getPosts(langCode)
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = AppState.Loading
+            initialValue = emptyList()
         )
 
-    // --- (Lógica de Rotación y Estado de UI... sin cambios) ---
-    fun setCurrentPage(page: Int) {
-        _currentPage.value = page
+    init {
+        // AL ARRANCAR: Bajamos AMBOS idiomas para tener todo listo offline
+        downloadAllRssData()
     }
+
+    fun toggleLanguage() {
+        _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
+        // Opcional: Podríamos volver a refrescar al cambiar, pero con el init ya debería bastar
+        downloadAllRssData()
+    }
+
+    private fun downloadAllRssData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            Log.d("MENTAT_DEBUG", "--- INICIANDO SINCRONIZACIÓN COMPLETA (ES + EN) ---")
+            // Lanzamos las dos peticiones en paralelo (o secuencial, da igual aquí)
+            repository.refreshPosts("es")
+            repository.refreshPosts("en")
+        }
+    }
+
+    // ------------------------------------------
+    // --- COMPATIBILIDAD JSON (LEGACY) ---
+    // ------------------------------------------
+    private val BASE_URL = "https://mentat-music.com/mentapp/"
+    private val DEF_JSON_URL = BASE_URL + "mentat_data_DEF.json"
+    private val ktorClient = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+        }
+    }
+
+    val appState: StateFlow<AppState> = kotlinx.coroutines.flow.flow {
+        emit(AppState.Loading)
+        try {
+            val data = ktorClient.get(DEF_JSON_URL).body<AppData>()
+            emit(AppState.Success(data))
+        } catch (e: Exception) {
+            Log.e("HomeViewModel", "Error JSON", e)
+            emit(AppState.Error("Error"))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppState.Loading)
+
+
+    // --- ESTADO DE UI (Sin cambios) ---
+    private val _currentPage = mutableIntStateOf(0)
+    val currentPage: State<Int> = _currentPage
+
+    fun setCurrentPage(page: Int) { _currentPage.value = page }
 
     override fun onCleared() {
         super.onCleared()
         ktorClient.close()
     }
 
-    // [Gestión de estado de UI]
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
-    fun updateRotationAngle(angle: Float) {
-        savedStateHandle[ROTATION_KEY] = angle
-    }
+    fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
 
     val isAnimatingOut: StateFlow<Boolean> = savedStateHandle.getStateFlow(ANIMATING_OUT_KEY, false)
-    val clickedIconIndex: StateFlow<Int> = savedStateHandle.getStateFlow(CLICKED_INDEX_KEY, -1)
-    val isExpansionFinished: StateFlow<Boolean> = savedStateHandle.getStateFlow(EXPANSION_FINISHED_KEY, false)
+    fun updateIsAnimatingOut(isAnimating: Boolean) { savedStateHandle[ANIMATING_OUT_KEY] = isAnimating }
 
-    fun updateIsAnimatingOut(isAnimating: Boolean) {
-        savedStateHandle[ANIMATING_OUT_KEY] = isAnimating
-    }
-    fun updateClickedIconIndex(index: Int) {
-        savedStateHandle[CLICKED_INDEX_KEY] = index
-    }
-    fun updateIsExpansionFinished(isFinished: Boolean) {
-        savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished
-    }
+    val clickedIconIndex: StateFlow<Int> = savedStateHandle.getStateFlow(CLICKED_INDEX_KEY, -1)
+    fun updateClickedIconIndex(index: Int) { savedStateHandle[CLICKED_INDEX_KEY] = index }
+
+    val isExpansionFinished: StateFlow<Boolean> = savedStateHandle.getStateFlow(EXPANSION_FINISHED_KEY, false)
+    fun updateIsExpansionFinished(isFinished: Boolean) { savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished }
 }

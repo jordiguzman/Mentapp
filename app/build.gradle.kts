@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    id("kotlin-kapt")
 }
 
 android {
@@ -71,6 +72,24 @@ dependencies {
     implementation(libs.ktor.serializationKotlinxJson)
     implementation(libs.kotlinx.serializationJson)
     implementation(libs.glide.compose)
+
+    // ROOM DATABASE
+        implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+
+    // 👇 AHORA SÍ RECONOCERÁ KAPT
+
+    kapt(libs.androidx.room.compiler)
+    implementation(libs.retrofit)
+    implementation(libs.okhttp.logging) // Para ver en la consola lo que descarga
+
+    implementation(libs.tikxml.core)
+    implementation(libs.tikxml.annotation)
+    implementation(libs.tikxml.converter) // Conecta Retrofit con TikXML
+
+    // El procesador. Si en tu configuración copiada usas 'kapt', pon 'kapt'.
+    // Si usas 'ksp', pon 'ksp'. Ante la duda, mira cómo tienes puesto Room arriba.
+    kapt(libs.tikxml.processor)
 
 
 }
