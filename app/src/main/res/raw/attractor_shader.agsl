@@ -1,100 +1,56 @@
-// AGSL (Android Graphics Shading Language)
-//
-// -------------------------------------------------------------------
-// ¡Bienvenido al panel de control del Director Artístico!
-//
-// Este es el código que estás ejecutando. ¡No lo modificaré, solo añado
-// las explicaciones que pediste!
-// -------------------------------------------------------------------
+// AGSL - Shader de Atractor de Clifford (Versión Estable/Video)
 
-
-// --- 1. VARIABLES QUE LLEGAN DESDE KOTLIN ---
-
-// El "reloj" principal que llega desde HomeScreen.kt.
-// Es un número que no para de crecer (de 0 a 1000) y se repite.
-// Es el motor principal de tu animación (la "mutación").
 uniform float u_time;
-
-// El tamaño de la pantalla (ancho, alto) en píxeles.
 uniform vec2 u_resolution;
 
+// --- PARÁMETROS (Copiados de tu versión Shadertoy) ---
 
-// --- 2. ¡TUS PARÁMETROS PARA TOQUETEAR! ---
-
-// --- A. El "ADN" del Atractor ---
-// Estos 4 números son la "semilla" matemática.
-// ¡Cambiar un decimal aquí (ej. -1.4 a -1.3) cambia la FORMA ENTERA!
-// (Estos son los parámetros de Clifford que encontraste)
+// 1. ADN (Forma) - Idénticos a los tuyos
 const float A_BASE = -1.4;
 const float B_BASE = 1.6;
 const float C_BASE = 1.0;
 const float D_BASE = 0.7;
 
-// --- B. La "Velocidad de Mutación" ---
-// Esto controla lo RÁPIDO que el atractor "muta" o "evoluciona".
-// ¡Veo que los has subido! (ej. 0.10). Si va "volando",
-// bájalo (ej. 0.01 o 0.005) para un efecto más lento.
+// 2. VELOCIDAD - Idéntica a tu versión estable
 const float A_SPEED = 0.05;
 const float B_SPEED = 0.03;
 const float C_SPEED = 0.1;
 const float D_SPEED = 0.07;
 
-// --- C. La "Calidad" (Rendimiento) ---
-// El número de veces que ejecutamos la simulación POR PÍXEL.
-// Más alto (ej. 100) = "hilos" más finos y detallados (como tu foto naranja).
-// Más bajo (ej. 10)  = Más borroso pero más rápido.
-const int ITERATIONS = 30; // (Pusiste 30)
+// 3. CALIDAD (LA CLAVE DEL ÉXITO)
+// Bajamos de 30 a 20. Esto elimina el "ruido" y lo hace estable.
+const int ITERATIONS = 20;
 
-// --- D. El "Color" ---
-// El color base. Es un vector 'vec3(Rojo, Verde, Azul)'.
-// Los valores van de 0.0 (apagado) a 1.0 (encendido).
-//
-// ¡CORRECCIÓN! Para un color NARANJA (como tu foto),
-// usamos Rojo al 100% (1.0) y Verde sobre el 40% (0.4).
-const vec3 COLOR = vec3(0.8, 0.0, 0.3); // <-- ¡CAMBIO AQUÍ!
-// --- FIN DE PARÁMETROS ---
-
+// 4. COLOR
+// Tu color rojo oscuro exacto: vec3(0.7, 0.0, 0.0)
+const vec3 COLOR = vec3(0.8, 0.0, 0.3);
 
 // -------------------------------------------------------------------
-// --- LA FÁBRICA (La Función Principal) ---
+// LÓGICA
 // -------------------------------------------------------------------
-// (Esto se ejecuta para CADA PÍXEL de la pantalla)
+
 vec4 main(vec2 fragCoord) {
 
     // --- PASO 1: COORDENADAS ---
-    // Coge la coordenada del píxel (ej. 300, 600) y la "normaliza":
-    // 1. La centra en (0,0).
-    // 2. Corrige el "aspect ratio" (para que no se estire).
     vec2 p = (fragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
 
-    // --- PASO 2: ANIMACIÓN (LA "MUTACIÓN") ---
-    // Coge los valores "ADN" (A_BASE) y los hace "mutar"
-    // usando el "reloj" (u_time) y tu "Velocidad" (A_SPEED).
+    // --- PASO 2: ANIMACIÓN ---
     float a = A_BASE + sin(u_time * A_SPEED) * 0.5;
     float b = B_BASE + cos(u_time * B_SPEED) * 0.4;
     float c = C_BASE + sin(u_time * C_SPEED) * 0.2;
     float d = D_BASE + cos(u_time * D_SPEED) * 0.3;
 
-    // --- PASO 3: SIMULACIÓN (EL "BAILE") ---
-    // Coge la coordenada 'p' y la usa como "semilla" (punto de inicio).
-    // (El 'for' loop se ejecuta 30 veces, según 'ITERATIONS')
+    // --- PASO 3: SIMULACIÓN ---
     for(int i = 0; i < ITERATIONS; i++) {
-        // ¡La "magia" de Clifford!
-        // La nueva posición se calcula basándose en la anterior.
         p = vec2(
             sin(a * p.y) + c * cos(a * p.x),
             sin(b * p.x) + d * cos(b * p.y)
         );
-    } // (Fin del for loop)
+    }
 
-    // --- PASO 4: COLOREAR (EL PINCEL) ---
-    // Coge el punto final del "baile" (p).
-    // Colorea el píxel basándose en su DISTANCIA al centro (length).
-    // 'smoothstep' crea un fundido suave en lugar de un borde duro.
-    // (Esto es lo que crea el efecto de "anillos" verdes).
+    // --- PASO 4: COLOREAR ---
     float brightness = smoothstep(0.0, 1.5, length(p));
 
-    // Pinta el píxel: coge tu 'COLOR' y le aplica el brillo.
-    // ¡CORRECCIÓN! El Alpha (el 4º valor) debe ser 1.0 para ser opaco.
-    return vec4(COLOR * brightness, 1.0); // <-- ¡CAMBIO AQUÍ!
+    // Salida final (Opacidad 1.0 siempre)
+    return vec4(COLOR * brightness, 1.0);
 }

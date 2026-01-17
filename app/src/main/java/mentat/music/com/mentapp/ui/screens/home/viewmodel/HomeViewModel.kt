@@ -7,27 +7,24 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.get
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import mentat.music.com.mentapp.data.PostEntity
 import mentat.music.com.mentapp.data.local.AppDatabase
+import mentat.music.com.mentapp.data.local.entity.MediaEntity
+import mentat.music.com.mentapp.data.model.AppData
+import mentat.music.com.mentapp.data.model.CarouselItem
+import mentat.music.com.mentapp.data.repository.MediaRepository
 import mentat.music.com.mentapp.data.repository.PostRepository
 
-// --- CONSTANTES ---
+// --- CONSTANTES DE UI (Sin cambios) ---
 private val angleStep = (2 * Math.PI.toFloat() / 7)
 private val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 private val BANDCAMP_START_ANGLE = targetAngleRad - (angleStep * 5)
@@ -37,26 +34,7 @@ private const val ANIMATING_OUT_KEY = "isAnimatingOut"
 private const val CLICKED_INDEX_KEY = "clickedIconIndex"
 private const val EXPANSION_FINISHED_KEY = "isExpansionFinished"
 
-// --- ESTRUCTURAS DE DATOS ---
-@Serializable
-data class CarouselItem(
-    val imageUrl: String? = null,
-    val targetUrl: String? = null,
-    val title: String? = null,
-    val artist: String? = null,
-    val appPackageName: String? = null
-)
-
-@Serializable
-data class AppData(
-    val GUZZ: List<CarouselItem>? = null, // Esto lo sustituiremos pronto por 'newsPosts'
-    val Spotify: List<CarouselItem>? = null,
-    val Bandcamp: List<CarouselItem>? = null,
-    val Soundcloud: List<CarouselItem>? = null,
-    val YouTube: List<CarouselItem>? = null,
-    val Concepto: List<CarouselItem>? = null
-)
-
+// --- ESTADOS DE LA APP ---
 sealed class AppState {
     object Loading : AppState()
     data class Success(val data: AppData) : AppState()
@@ -68,70 +46,90 @@ class HomeViewModel(
     private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
-    // --- BASE DE DATOS Y REPOSITORIO ---
+    // --- 1. INICIALIZACIÓN DE BASES DE DATOS Y REPOSITORIOS ---
     private val database = AppDatabase.getDatabase(application)
-    private val repository = PostRepository(database.postDao())
 
-    // --- IDIOMA ---
+    // Repositorio de Noticias (RSS)
+    private val postRepository = PostRepository(database.postDao())
+
+    // NUEVO: Repositorio de Música/Video (JSON -> Room)
+    private val mediaRepository = MediaRepository(database.mediaDao())
+
+    // --- 2. GESTIÓN DE IDIOMA (RSS) ---
     enum class Language { ES, EN }
     private val _currentLanguage = MutableStateFlow(Language.ES)
     val currentLanguage: StateFlow<Language> = _currentLanguage.asStateFlow()
 
-    // --- NUEVO: FLUJO DE NOTICIAS REALES (ROOM) ---
-    // Esta variable observa el idioma y devuelve automáticamente la lista correcta de la BD
+    // Flujo de Noticias (RSS) - Igual que antes
     val newsPosts: StateFlow<List<PostEntity>> = _currentLanguage
         .flatMapLatest { lang ->
             val langCode = if (lang == Language.ES) "es" else "en"
-            repository.getPosts(langCode)
+            postRepository.getPosts(langCode)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
+    // --- 3. NUEVO FLUJO PRINCIPAL (JSON -> ROOM -> UI) ---
+    // Aquí ocurre la magia: La UI observa la base de datos, no internet.
+    val appState: StateFlow<AppState> = mediaRepository.allMedia
+        .map { mediaList ->
+            // Convertimos la lista plana de Room a la estructura AppData
+            if (mediaList.isEmpty()) {
+                AppState.Loading // O Success vacío si prefieres
+            } else {
+                val organizedData = AppData(
+                    GUZZ = filterAndMap(mediaList, "GUZZ"),
+                    Spotify = filterAndMap(mediaList, "Spotify"),
+                    Bandcamp = filterAndMap(mediaList, "Bandcamp"),
+                    Soundcloud = filterAndMap(mediaList, "Soundcloud"),
+                    YouTube = filterAndMap(mediaList, "YouTube"),
+                    Concepto = null // Este va por RSS (newsPosts), así que null aquí
+                )
+                AppState.Success(organizedData)
+            }
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
+            initialValue = AppState.Loading
         )
 
     init {
-        // AL ARRANCAR: Bajamos AMBOS idiomas para tener todo listo offline
+        // AL ARRANCAR:
+        // 1. Bajamos noticias (RSS)
         downloadAllRssData()
+
+        // 2. Bajamos JSON y actualizamos Room (Música/Video)
+        viewModelScope.launch(Dispatchers.IO) {
+            Log.d("MENTAT_ViewModel", "Iniciando sincronización de Medios...")
+            mediaRepository.refreshMedia()
+        }
+    }
+
+    // --- HELPERS ---
+    private fun filterAndMap(list: List<MediaEntity>, category: String): List<CarouselItem> {
+        return list.filter { it.category == category }.map { entity ->
+            CarouselItem(
+                title = entity.title,
+                artist = entity.artist,
+                imageUrl = entity.imageUrl,
+                targetUrl = entity.targetUrl,
+                appPackageName = entity.appPackageName
+            )
+        }
     }
 
     fun toggleLanguage() {
         _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        // Opcional: Podríamos volver a refrescar al cambiar, pero con el init ya debería bastar
         downloadAllRssData()
     }
 
     private fun downloadAllRssData() {
         viewModelScope.launch(Dispatchers.IO) {
-            Log.d("MENTAT_DEBUG", "--- INICIANDO SINCRONIZACIÓN COMPLETA (ES + EN) ---")
-            // Lanzamos las dos peticiones en paralelo (o secuencial, da igual aquí)
-            repository.refreshPosts("es")
-            repository.refreshPosts("en")
+            postRepository.refreshPosts("es")
+            postRepository.refreshPosts("en")
         }
     }
-
-    // ------------------------------------------
-    // --- COMPATIBILIDAD JSON (LEGACY) ---
-    // ------------------------------------------
-    private val BASE_URL = "https://mentat-music.com/mentapp/"
-    private val DEF_JSON_URL = BASE_URL + "mentat_data_DEF.json"
-    private val ktorClient = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
-        }
-    }
-
-    val appState: StateFlow<AppState> = kotlinx.coroutines.flow.flow {
-        emit(AppState.Loading)
-        try {
-            val data = ktorClient.get(DEF_JSON_URL).body<AppData>()
-            emit(AppState.Success(data))
-        } catch (e: Exception) {
-            Log.e("HomeViewModel", "Error JSON", e)
-            emit(AppState.Error("Error"))
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppState.Loading)
-
 
     // --- ESTADO DE UI (Sin cambios) ---
     private val _currentPage = mutableIntStateOf(0)
@@ -139,11 +137,7 @@ class HomeViewModel(
 
     fun setCurrentPage(page: Int) { _currentPage.value = page }
 
-    override fun onCleared() {
-        super.onCleared()
-        ktorClient.close()
-    }
-
+    // Gestión de rotación y animaciones
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
 

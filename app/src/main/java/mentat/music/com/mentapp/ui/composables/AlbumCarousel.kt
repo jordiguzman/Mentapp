@@ -6,28 +6,36 @@ import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -42,12 +50,11 @@ import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import com.bumptech.glide.request.RequestOptions
 import mentat.music.com.mentapp.R
-import mentat.music.com.mentapp.ui.VibrationHelper
+import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.navigation.AppScreens
 import mentat.music.com.mentapp.ui.rememberVibrator
-import mentat.music.com.mentapp.ui.screens.home.viewmodel.CarouselItem
 
-// --- (Definición de la fuente - sin cambios) ---
+// --- (Definición de la fuente) ---
 private val verdanaFontFamily = FontFamily(
     Font(R.font.verdana_regular, FontWeight.Normal),
     Font(R.font.verdana_italic, FontWeight.Normal, FontStyle.Italic),
@@ -62,36 +69,28 @@ fun AlbumCarousel(
     items: List<CarouselItem>,
     navController: NavController,
     isConceptMode: Boolean,
-    initialPage: Int, // <-- Estado de control del ViewModel (Lectura)
-    onPageChanged: (Int) -> Unit // <-- Callback para informar al ViewModel (Escritura)
+    initialPage: Int,
+    onPageChanged: (Int) -> Unit
 ) {
     val sidePadding = if (isConceptMode) 16.dp else 48.dp
-    val vibrator = rememberVibrator() // Asumo que esta función está disponible
+    val vibrator = rememberVibrator()
 
-    // 1. Inicializa el PagerState. Usa initialPage solo en la primera composición
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { items.size }
     )
 
-    // 2. Control (UI -> VM): Notifica los cambios de la UI al ViewModel (Esto es correcto)
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collect { pageIndex ->
-            // vibrator.vibrateTick()
             onPageChanged(pageIndex)
         }
     }
 
-    // 3. CONTROL (VM -> UI): ¡EL FIX! Sincronización manual.
-    // Si 'initialPage' (el estado del ViewModel) cambia, forzamos el scroll.
     LaunchedEffect(initialPage) {
-        // Usamos scrollToPage para forzar un cambio inmediato al estado del VM.
-        // Se ejecuta cada vez que initialPage cambia (ej. al volver del 'back').
         if (pagerState.currentPage != initialPage) {
             pagerState.scrollToPage(initialPage)
         }
     }
-    // -------------------------------
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -123,7 +122,7 @@ fun AlbumCarousel(
 }
 
 /**
- * La tarjeta individual (sin cambios en su lógica interna)
+ * La tarjeta individual con la TRANSICIÓN SUAVE añadida
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
@@ -166,17 +165,20 @@ fun AlbumCard(
                     .clickable(enabled = isClickable) {
                         if (item.targetUrl == null) return@clickable
 
-                        vibrator.vibrateClick() // <-- VIBRACIÓN DE CLIC
+                        vibrator.vibrateClick()
 
+                        // LÓGICA ESTÁNDAR Y ROBUSTA
                         if (item.appPackageName != null) {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.targetUrl))
                             intent.setPackage(item.appPackageName)
                             try {
                                 context.startActivity(intent)
                             } catch (e: ActivityNotFoundException) {
+                                // Si no tiene la app instalada, abrimos el navegador/webview
                                 uriHandler.openUri(item.targetUrl)
                             }
                         } else {
+                            // Navegación interna a nuestra WebView
                             navController.navigate(
                                 AppScreens.WebViewScreen.createRoute(item.targetUrl)
                             )
@@ -193,9 +195,8 @@ fun AlbumCard(
             )
         }
 
-        // --- 2. TEXTOS ---
+        // --- 2. TEXTOS (Sin cambios) ---
         if (isConceptMode) {
-            // ... (Lógica de Scroll sin cambios) ...
             Spacer(Modifier.height(16.dp))
 
             item.title?.let { title ->
@@ -233,7 +234,6 @@ fun AlbumCard(
             }
 
         } else {
-            // --- MODO DISCO (Lógica de Disco sin cambios) ---
             Spacer(Modifier.weight(1f))
             item.title?.let { title ->
                 Text(
@@ -268,7 +268,7 @@ fun AlbumCard(
 }
 
 
-// --- (HorizontalPagerIndicator - sin cambios) ---
+// --- (HorizontalPagerIndicator) ---
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HorizontalPagerIndicator(

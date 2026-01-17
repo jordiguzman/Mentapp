@@ -80,6 +80,8 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mentat.music.com.mentapp.R
+import mentat.music.com.mentapp.data.model.AppData
+import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.composables.AlbumCarousel
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
@@ -89,9 +91,7 @@ import mentat.music.com.mentapp.ui.composables.angleStep
 import mentat.music.com.mentapp.ui.composables.menuItems
 import mentat.music.com.mentapp.ui.composables.targetAngleRad
 import mentat.music.com.mentapp.ui.rememberVibrator
-import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppData
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
-import mentat.music.com.mentapp.ui.screens.home.viewmodel.CarouselItem
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
 import kotlin.math.atan2
 import kotlin.math.roundToInt
