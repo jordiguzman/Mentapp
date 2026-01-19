@@ -1,3 +1,20 @@
 <resources>
-    <string name="app_name">Mentapp</string>
+    <string name="app_name" translatable="false">Mentapp</string>
+
+    <string name="dial_title_info">MENTAT INFO</string>
+    <string name="dial_title_audio">MENTAT AUDIO</string>
+
+    <string name="cat_tutorials">Tutoriales</string>
+    <string name="cat_science">Divulgación</string>
+    <string name="cat_blog">Blog</string>
+    <string name="cat_guzz">GUZZ</string>
+
+    <string name="btn_blog_archive">Archivo</string>
+    <string name="btn_contact">Contacto</string>
+    <string name="btn_subscribers">Suscriptores</string>
+    <string name="btn_live">Directo</string>
+    <string name="btn_dj_sessions">Sesiones DJ</string>
+
+    <string name="msg_coming_soon">Próximamente...</string>
+    <string name="msg_loading">Cargando...</string>
 </resources>

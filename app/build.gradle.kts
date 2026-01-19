@@ -74,8 +74,11 @@ dependencies {
     implementation(libs.glide.compose)
 
     // ROOM DATABASE
-        implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
+    val room_version = "2.8.4" // <--- ASEGÚRATE DE QUE SEA ESTA O MAYOR
+
+    implementation("androidx.room:room-runtime:$room_version")
+    implementation("androidx.room:room-ktx:$room_version")
+    kapt("androidx.room:room-compiler:$room_version") // <--- ESTA ES LA IMPORTANTE
 
     // 👇 AHORA SÍ RECONOCERÁ KAPT
 

@@ -1,29 +1,25 @@
-// AGSL - Shader de Atractor de Clifford (Versión Estable/Video)
-
 uniform float u_time;
 uniform vec2 u_resolution;
+uniform vec3 u_color; // <--- ¡AQUÍ ESTÁ LA MAGIA! (Ya no es const)
 
-// --- PARÁMETROS (Copiados de tu versión Shadertoy) ---
+// --- PARÁMETROS ---
 
-// 1. ADN (Forma) - Idénticos a los tuyos
+// 1. ADN (Forma)
 const float A_BASE = -1.4;
 const float B_BASE = 1.6;
 const float C_BASE = 1.0;
 const float D_BASE = 0.7;
 
-// 2. VELOCIDAD - Idéntica a tu versión estable
+// 2. VELOCIDAD
 const float A_SPEED = 0.05;
 const float B_SPEED = 0.03;
 const float C_SPEED = 0.1;
 const float D_SPEED = 0.07;
 
-// 3. CALIDAD (LA CLAVE DEL ÉXITO)
-// Bajamos de 30 a 20. Esto elimina el "ruido" y lo hace estable.
+// 3. CALIDAD
 const int ITERATIONS = 20;
 
-// 4. COLOR
-// Tu color rojo oscuro exacto: vec3(0.7, 0.0, 0.0)
-const vec3 COLOR = vec3(0.8, 0.0, 0.3);
+// (El color fijo se ha eliminado de aquí)
 
 // -------------------------------------------------------------------
 // LÓGICA
@@ -51,6 +47,6 @@ vec4 main(vec2 fragCoord) {
     // --- PASO 4: COLOREAR ---
     float brightness = smoothstep(0.0, 1.5, length(p));
 
-    // Salida final (Opacidad 1.0 siempre)
-    return vec4(COLOR * brightness, 1.0);
+    // Salida final: Usamos la variable inyectada 'u_color'
+    return vec4(u_color * brightness, 1.0);
 }

@@ -2,8 +2,11 @@ package mentat.music.com.mentapp.ui.screens.home
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -33,8 +36,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.* // Iconos del sistema
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,13 +65,13 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -85,14 +94,13 @@ import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.composables.AlbumCarousel
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
+import mentat.music.com.mentapp.ui.composables.DialItem // <--- Asegúrate de importar esto
 import mentat.music.com.mentapp.ui.composables.TRANSITION_DURATION
 import mentat.music.com.mentapp.ui.composables.VideoBackground
-import mentat.music.com.mentapp.ui.composables.angleStep
-import mentat.music.com.mentapp.ui.composables.menuItems
-import mentat.music.com.mentapp.ui.composables.targetAngleRad
 import mentat.music.com.mentapp.ui.rememberVibrator
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
+import mentat.music.com.mentapp.utils.MentatConstants // <--- Importar constantes
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
@@ -117,16 +125,19 @@ fun HomeScreen(
     val isExpansionFinished by homeViewModel.isExpansionFinished.collectAsState()
     val newsPosts by homeViewModel.newsPosts.collectAsState()
 
+    // ESTADO PARA EL DIAL (True = Info, False = Audio)
+    var isMainDial by remember { mutableStateOf(true) }
 
-
-    // --- OBTENIENDO EL ESTADO DEL PAGINADOR ---
-    val currentPage by homeViewModel.currentPage // <-- ¡NUEVO ESTADO!
-
+    val currentPage by homeViewModel.currentPage
     val rotationAngle = remember { Animatable(savedRotationAngle) }
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
     val dialScale = remember { Animatable(1.0f) }
     val vibrator = rememberVibrator()
+
+    // CONSTANTES DE ANIMACIÓN (Traídas de tu código original)
+    val angleStep = (2 * Math.PI.toFloat() / 7) // Asumimos 7 items por dial
+    val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 
     // --- REBOTE ---
     val bounceSpec = spring<Float>(
@@ -141,11 +152,12 @@ fun HomeScreen(
             dialScale.animateTo(targetValue = 1.0f, animationSpec = bounceSpec)
         }
     }
+
     // 1. RECOLECCIÓN DEL ESTADO
     val currentLanguage by homeViewModel.currentLanguage.collectAsState()
     val buttonText = if (currentLanguage == HomeViewModel.Language.ES) "EN" else "ES"
 
-    // --- INMERSIVO (Híbrido Moderno/Legacy) ---
+    // --- INMERSIVO ---
     val view = LocalView.current
     val window = (view.context as Activity).window
     LaunchedEffect(key1 = window) {
@@ -154,8 +166,6 @@ fun HomeScreen(
         controller.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(WindowInsetsCompat.Type.systemBars())
-
-        // FIX PARA API < 30 (Android 10 o menos)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             @Suppress("DEPRECATION")
             view.systemUiVisibility = (
@@ -201,6 +211,97 @@ fun HomeScreen(
     )
     var frozenTime by remember { mutableStateOf(0f) }
 
+    // --- FUNCIONES AUXILIARES ---
+    val context = LocalContext.current
+    fun launchUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Error link", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun showComingSoon() {
+        Toast.makeText(context, context.getString(R.string.msg_coming_soon), Toast.LENGTH_SHORT).show()
+    }
+
+    // Función para activar la animación de expansión (Carrusel)
+    fun activateExpansion(index: Int) {
+        scope.launch {
+            vibrator.vibrateClick()
+            frozenTime = time
+            homeViewModel.updateIsAnimatingOut(true)
+            homeViewModel.updateClickedIconIndex(index)
+            homeViewModel.updateIsExpansionFinished(true)
+        }
+    }
+
+    // =====================================================================
+    // DEFINICIÓN DE LOS DIALES (AQUÍ ESTÁ LA MAGIA)
+    // =====================================================================
+
+    // DIAL 1: INFO (Principal)
+    val itemsDial1 = remember {
+        listOf(
+            DialItem("Bluesky", "Bluesky", R.drawable.ic_menu_social, Color(0xFF0085FF)) {
+                launchUrl(MentatConstants.URL_BLUESKY)
+            },
+            DialItem("YouTube", "YouTube", R.drawable.ic_menu_youtube, Color(0xFFFF0000)) {
+                launchUrl(MentatConstants.URL_YOUTUBE_CHANNEL)
+            },
+            DialItem("Spotify", "Spotify", R.drawable.ic_menu_streams, Color(0xFF1DB954)) {
+                launchUrl(MentatConstants.URL_SPOTIFY_ARTIST)
+            },
+            DialItem("Bandcamp", "Bandcamp", R.drawable.ic_menu_bandcamp, Color(0xFF629AA9)) {
+                launchUrl(MentatConstants.URL_BANDCAMP_LATEST)
+            },
+            // NUEVOS (Iconos del Sistema) -> Usan lógica de carrusel (Filtro Audio)
+            DialItem("Audio", "Tutoriales", Icons.Default.Build, Color(0xFFFFA500)) {
+                homeViewModel.filterByCategory("Audio")
+                activateExpansion(4) // Índice manual en la lista
+            },
+            DialItem("Divulgacion", "Ciencia", Icons.Default.Search, Color(0xFF00CED1)) {
+                homeViewModel.filterByCategory("Divulgacion")
+                activateExpansion(5)
+            },
+            DialItem("Blog", "Blog", Icons.Default.Edit, Color(0xFFFF69B4)) {
+                homeViewModel.filterByCategory("Blog")
+                activateExpansion(6)
+            }
+        )
+    }
+
+    // DIAL 2: AUDIO (Pro)
+    val itemsDial2 = remember {
+        listOf(
+            DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
+                launchUrl(MentatConstants.URL_SOUNDCLOUD_LATEST)
+            },
+            DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) {
+                homeViewModel.filterByCategory("GUZZ")
+                activateExpansion(1)
+            },
+            DialItem("DJSessions", "DJ Sessions", Icons.Default.List, Color(0xFF9C27B0)) {
+                launchUrl(MentatConstants.URL_DJ_SESSIONS)
+            },
+            DialItem("Subs", "Suscriptores", Icons.Default.Lock, Color(0xFFFFD700)) {
+                showComingSoon()
+            },
+            DialItem("Archive", "Archivo", R.drawable.ic_menu_concept, Color(0xFF8A2BE2)) {
+                launchUrl(MentatConstants.URL_BLOG_OLD)
+            },
+            DialItem("Contact", "Contacto", Icons.Default.Email, Color(0xFF4CAF50)) {
+                launchUrl("mailto:info@mentat-music.com")
+            },
+            DialItem("Live", "Directo", Icons.Default.LocationOn, Color(0xFFE91E63)) {
+                showComingSoon()
+            }
+        )
+    }
+
+    // Seleccionamos la lista activa
+    val currentItems = if (isMainDial) itemsDial1 else itemsDial2
+
     // --- BACK HANDLER ---
     BackHandler(enabled = isAnimatingOut || isExpansionFinished) {
         scope.launch {
@@ -216,20 +317,6 @@ fun HomeScreen(
         }
     }
 
-    // --- FILTRO OSCURO ---
-    val desaturationFilter: ColorFilter = remember {
-        val matrix = ColorMatrix(
-            floatArrayOf(
-                0.4f, 0f, 0f, 0f, 0f,
-                0f, 0.4f, 0f, 0f, 0f,
-                0f, 0f, 0.4f, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f
-            )
-        )
-        ColorFilter.colorMatrix(matrix)
-    }
-
-
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -239,12 +326,12 @@ fun HomeScreen(
             AttractorBackground(
                 modifier = Modifier.fillMaxSize(),
                 isFrozen = isAnimatingOut || isExpansionFinished,
-                frozenTime = frozenTime
+                frozenTime = frozenTime,
+                isBlueMode = !isMainDial // <--- AÑADE ESTA LÍNEA (Negamos isMainDial)
             )
         } else {
             VideoBackground(modifier = Modifier.fillMaxSize())
         }
-
 
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),
@@ -286,9 +373,9 @@ fun HomeScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Título
+                // TÍTULO MENTAPP
                 Text(
-                    text = "MENTAPP",
+                    text = if(isMainDial) stringResource(R.string.dial_title_info) else stringResource(R.string.dial_title_audio),
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 22.sp,
                     fontFamily = verdanaFontFamily,
@@ -298,57 +385,35 @@ fun HomeScreen(
                         .padding(32.dp)
                 )
 
-                // Botón Salir (Power)
-                val context = LocalContext.current
+                // BOTONES ESQUINA SUPERIOR DERECHA (Power & Idioma)
+                // ... (Igual que antes) ...
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(24.dp)
-                        .size(48.dp)
+                    modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
                         .clickable {
                             vibrator.vibrateClick()
                             val activity = context as? Activity
-                            if (activity != null) {
-                                activity.finishAndRemoveTask()
-                                exitProcess(0)
-                            }
+                            if (activity != null) { activity.finishAndRemoveTask(); exitProcess(0) }
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_power),
-                        contentDescription = "Salir",
-                        colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.6f)),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Image(painter = painterResource(id = R.drawable.ic_power), contentDescription = "Salir", colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.6f)), modifier = Modifier.size(28.dp))
                 }
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd) // O TopStart, ajusta según el diseño
-                        .padding(top = 35.dp, end = 80.dp)
-                        .clickable {
-                            // Llama a la función del ViewModel que dispara la recarga de datos
-                            homeViewModel.toggleLanguage()
-                            vibrator.vibrateClick()
-                        },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 35.dp, end = 80.dp)
+                        .clickable { homeViewModel.toggleLanguage(); vibrator.vibrateClick() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = buttonText,
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 20.sp,
-                        fontFamily = verdanaFontFamily,
-                        fontWeight = FontWeight.Bold // Para destacar
-                    )
+                    Text(text = buttonText, color = Color.White.copy(alpha = 0.6f), fontSize = 20.sp, fontFamily = verdanaFontFamily, fontWeight = FontWeight.Bold)
                 }
 
-                // Contenedor del Dial
+                // CONTENEDOR DEL DIAL Y EL BOTÓN CENTRAL
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .scale(dialScale.value),
                     contentAlignment = Alignment.Center
                 ) {
+                    // 1. Círculos de fondo (Canvas)
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val gradientColors = listOf(
                             Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.4f),
@@ -360,11 +425,10 @@ fun HomeScreen(
                         drawCircle(color = Color.White.copy(alpha = 0.8f), radius = radiusPx - (thicknessPx / 2), style = Stroke(width = 1.5.dp.toPx()))
                         drawCircle(color = Color.White.copy(alpha = 0.5f), radius = radiusPx + (thicknessPx / 2), style = Stroke(width = 2.dp.toPx()))
                     }
+
+                    // 2. Flechas indicadoras
                     Row(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .offset(y = arrowsYOffset)
-                            .alpha(arrowsAlpha),
+                        modifier = Modifier.align(Alignment.Center).offset(y = arrowsYOffset).alpha(arrowsAlpha),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -372,73 +436,60 @@ fun HomeScreen(
                         Spacer(Modifier.width(80.dp))
                         Image(painter = painterResource(id = R.drawable.outline_line_end_arrow_notch_24), contentDescription = null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
                     }
+
+                    // 3. LA RUEDA (CircularDialLayout) -> Versión Híbrida
                     CircularDialLayout(
                         modifier = Modifier.fillMaxSize(),
+                        items = currentItems, // <--- Pasamos la lista activa (1 o 2)
                         currentRotation = rotationAngle.value,
                         iconPathRadius = iconPathRadius,
                         isAnimatingOut = isAnimatingOut,
                         clickedIconIndex = clickedIconIndex,
-                        isExpansionFinished = isExpansionFinished,
-                        onIconClick = { route, index ->
-                            if (!isAnimatingOut) {
-                                scope.launch {
-                                    val clickedItemName = menuItems[index].name.trim()
-                                    vibrator.vibrateClick()
-                                    // AJUSTE 1: Cambiamos "Concepto" por "Entradas"
-                                    val carruselItems = listOf("GUZZ", "Spotify", "YouTube", "Entradas", "Bandcamp", "Soundcloud")
-                                    if (clickedItemName in carruselItems) {
-                                        frozenTime = time
-                                        homeViewModel.updateIsAnimatingOut(true)
-                                        homeViewModel.updateClickedIconIndex(index)
-                                        homeViewModel.updateIsExpansionFinished(true)
-                                    } else {
-                                        frozenTime = time
-                                        delay(100)
-                                        uriHandler.openUri(route)
-                                        delay(500)
-                                    }
-                                }
-                            }
-                        },
-                        contentFor = { item, isClickedIcon, isExpansionFinished, isActive ->
-                            val iconTargetAlpha = when {
-                                isClickedIcon && isAnimatingOut -> 0f
-                                else -> 1f
-                            }
-                            val iconAnimatedAlpha by animateFloatAsState(
-                                targetValue = iconTargetAlpha,
-                                animationSpec = tween(durationMillis = TRANSITION_DURATION),
-                                label = "iconContentAlpha"
-                            )
-                            val myFilter = if (isActive || isAnimatingOut) {
-                                null
-                            } else {
-                                remember {
-                                    ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
-                                        0.35f, 0f, 0f, 0f, 70f, // Rojo mult 0.6 + offset 70
-                                        0f, 0.35f, 0f, 0f, 70f, // Verde mult 0.6 + offset 70
-                                        0f, 0f, 0.35f, 0f, 70f, // Azul mult 0.6 + offset 70
-                                        0f, 0f, 0f, 1f, 0f     // Alpha intacto
-                                    )))
-                                }
-                            }
+                        isExpansionFinished = isExpansionFinished
+                        // Nota: El 'onIconClick' ahora está dentro de cada item
+                        // Nota: El 'contentFor' ya no es necesario, el layout pinta los iconos
+                    )
 
-                            Image(
-                                painter = painterResource(id = item.iconResId),
-                                contentDescription = item.name,
-                                contentScale = ContentScale.Fit,
-                                colorFilter = myFilter, // <--- Matriz aplicada aquí
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .alpha(iconAnimatedAlpha)
+                    // 4. BOTÓN CENTRAL (Para cambiar de Dial)
+                    if (!isAnimatingOut && !isExpansionFinished) {
+                        Button(
+                            onClick = {
+                                // 1. EL PUM FÍSICO (Vibración)
+                                vibrator.vibrateClick()
+
+                                // 2. EL PUM LÓGICO (Cambio instantáneo de datos y color)
+                                isMainDial = !isMainDial
+
+                                // 3. EL PUM VISUAL (Rebote/Aterrizaje)
+                                // Usamos la misma animación que al iniciar la app
+                                scope.launch {
+                                    // Primero rotamos a 0 rápido para que quede recto
+                                    rotationAngle.animateTo(0f, tween(300))
+                                }
+                                scope.launch {
+                                    // Hacemos que el dial "salte" un poco (1.1x) y caiga de golpe (1.0x)
+                                    dialScale.snapTo(1.1f)
+                                    dialScale.animateTo(targetValue = 1.0f, animationSpec = bounceSpec)
+                                }
+                            },
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha=0.8f)),
+                            modifier = Modifier.size(80.dp)
+                        ) {
+                            Text(
+                                text = if(isMainDial) "AUDIO" else "INFO",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold
                             )
                         }
-                    )
+                    }
                 }
             }
 
 
-            // --- CAPA CARRUSEL ---
+            // --- CAPA CARRUSEL (Lógica actualizada) ---
             val appData: AppData? = remember(appState) {
                 when (val state = appState) {
                     is AppState.Success -> state.data
@@ -446,51 +497,38 @@ fun HomeScreen(
                     is AppState.Error -> { Log.e("Home", "Error: ${state.message}"); null }
                 }
             }
-            val clickedItemName = if (clickedIconIndex != -1) menuItems[clickedIconIndex].name else null
+
+            // OBTENEMOS EL ID DEL ITEM CLICADO (Usando la lista actual)
+            val clickedItemId = if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
+                currentItems[clickedIconIndex].id else null
+
             var carouselData: List<CarouselItem>? = null
             var conceptDataAsCarousel: List<CarouselItem>? = null
 
-            if (appData != null && clickedItemName != null) {
-                when (clickedItemName) {
-                    // 1. GUZZ VUELVE A SU SITIO (JSON)
+            if (appData != null && clickedItemId != null) {
+                when (clickedItemId) {
                     "GUZZ" -> carouselData = appData.GUZZ
-
                     "Spotify" -> carouselData = appData.Spotify
                     "Bandcamp" -> carouselData = appData.Bandcamp
-                    "Soundcloud" -> carouselData = appData.Soundcloud
+                    "SoundCloud" -> carouselData = appData.Soundcloud
                     "YouTube" -> {
                         carouselData = appData.YouTube?.map { item ->
                             item.copy(imageUrl = "https://img.youtube.com/vi/${item.imageUrl}/0.jpg")
                         }
                     }
 
-                    // 2. LAS NOTICIAS SE VAN A "ENTRADAS" (ROOM / RSS)
-                    // 2. LAS NOTICIAS SE VAN A "ENTRADAS" (ROOM / RSS)
-                    "Entradas" -> {
+                    // BLOQUES QUE USAN NOTICIAS (ROOM)
+                    "Audio", "Divulgacion", "Blog" -> {
                         conceptDataAsCarousel = newsPosts.map { entity ->
-                            // LIMPIEZA DE HTML:
-                            // 1. Html.fromHtml quita las etiquetas (<p>, <b>, etc).
-                            // 2. toString() lo convierte a texto.
-                            // 3. replace(...) quita saltos de línea extra para que quede compacto.
-                            // 4. take(150) coge solo los primeros 150 caracteres.
-                            val plainText = android.text.Html.fromHtml(entity.content, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-                                .replace("\uFFFC", "")
-                                .replace("\n", " ")
-                                .trim()
-
-                            // Si el texto es muy largo, añadimos "..." al final
-                            val maxLength = 200
-                            val snippet = if (plainText.length > maxLength) {
-                                plainText.take(maxLength).substringBeforeLast(" ") + "..."
-                            } else {
-                                plainText
-                            }
+                            val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+                                .replace("\uFFFC", "").replace("\n", " ").trim()
+                            val snippet = if (plainText.length > 200) plainText.take(200).substringBeforeLast(" ") + "..." else plainText
 
                             CarouselItem(
                                 title = entity.title,
                                 imageUrl = entity.imageUrl,
-                                targetUrl = entity.link,
-                                artist = snippet // <--- AQUÍ PONEMOS EL RESUMEN
+                                targetUrl = entity.targetUrl, // Ojo aquí, usaba link antes
+                                artist = snippet // Snippet en el campo artist
                             )
                         }
                     }
@@ -506,9 +544,13 @@ fun HomeScreen(
                 animationSpec = tween(durationMillis = TRANSITION_DURATION),
                 label = "carouselLayerAlpha"
             )
-            val brandColor = if (clickedIconIndex != -1) menuItems[clickedIconIndex].brandColor else Color.Transparent
-            // AJUSTE 3: Usamos "Entradas" para determinar si estamos en modo concepto/entradas
-            val isConceptMode = (clickedItemName == "Entradas")
+
+            // Color de fondo según el item clicado
+            val brandColor = if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
+                currentItems[clickedIconIndex].color else Color.Transparent
+
+            // Si es un modo de lectura (Audio, Divulgacion, Blog)
+            val isConceptMode = (clickedItemId in listOf("Audio", "Divulgacion", "Blog"))
 
             val carouselBoxModifier = if (isPortrait) {
                 if (isConceptMode) Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f)
@@ -535,10 +577,9 @@ fun HomeScreen(
                     ) {
                         val itemsToShow = carouselData ?: conceptDataAsCarousel
                         val safeInitialPage = if (itemsToShow.isNullOrEmpty()) 0 else currentPage
-                        val itemSize = itemsToShow?.size ?: 0 // Obtener el tamaño de la lista
+                        val itemSize = itemsToShow?.size ?: 0
+
                         if (itemsToShow != null) {
-                            // Usamos el 'clickedIconIndex' como una clave de nivel superior
-                            // para forzar la recreación cada vez que se abre un nuevo Carousel.
                             key(safeInitialPage to itemSize) {
                                 AlbumCarousel(
                                     items = itemsToShow,
@@ -548,40 +589,25 @@ fun HomeScreen(
                                     onPageChanged = homeViewModel::setCurrentPage
                                 )
                             }
-                            // -------------------------------------------
                         } else if (appState is AppState.Loading) {
                             CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f), strokeWidth = 3.dp)
                         } else if (appState is AppState.Error) {
-                            Text("Error al cargar datos.", color = Color.White, textAlign = TextAlign.Center, fontFamily = verdanaFontFamily)
+                            Text("Error cargar datos.", color = Color.White, textAlign = TextAlign.Center, fontFamily = verdanaFontFamily)
                         }
                     }
 
-                    if (clickedIconIndex != -1) {
-                        Image(
-                            painter = painterResource(id = menuItems[clickedIconIndex].iconResId),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .align(if (isPortrait) Alignment.TopCenter else Alignment.CenterStart)
-                                .fillMaxWidth(0.20f)
-                                .aspectRatio(1f)
-                                .layout { measurable, constraints ->
-                                    val placeable = measurable.measure(constraints)
-                                    val xOffset = -(placeable.width * 1.4f).roundToInt()
-                                    val yOffset = -(placeable.height * 1.0f).roundToInt()
-                                    layout(placeable.width, placeable.height) {
-                                        if (isPortrait) placeable.placeRelative(0, yOffset)
-                                        else placeable.placeRelative(xOffset, 0)
-                                    }
-                                }
-                                .alpha(0.5f)
-                        )
+                    // ICONO DE FONDO EN EL CARRUSEL (Marca de agua)
+                    // (Aquí necesitaríamos adaptar para pintar Vector o PNG, por simplicidad usamos solo PNG si existe
+                    // o lo omitimos si es vector para no complicar el layout Box)
+                    /* if (clickedIconIndex != -1) {
+                         // Lógica visual opcional
                     }
+                    */
                 }
             }
         }
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

@@ -16,67 +16,93 @@ import mentat.music.com.mentapp.data.model.CarouselItem
 
 class MediaRepository(private val mediaDao: MediaDao) {
 
-    private val JSON_URL = "https://mentat-music.com/mentapp/mentat_data_DEF.json"
+    // DOS FUENTES DE DATOS:
+    private val STATIC_URL = "https://mentat-music.com/mentapp/mentat_data_DEF.json"
+    private val DYNAMIC_URL = "https://mentat-music.com/mentapp/app_data.json"
 
-    // Cliente HTTP (Igual que tenías en el ViewModel)
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(Json {
-                ignoreUnknownKeys = true
+                ignoreUnknownKeys = true // Vital: Ignora lo que no entienda de cada archivo
                 coerceInputValues = true
             })
         }
     }
 
-    // 1. LEER DATOS (OBSERVAR)
-    // Devuelve todos los datos de la BD. La UI filtrará lo que necesite.
+    // 1. LEER (La UI observa esto)
     val allMedia: Flow<List<MediaEntity>> = mediaDao.getAllMedia()
 
-    // 2. ACTUALIZAR DATOS (DESCARGAR Y GUARDAR)
+    // 2. ACTUALIZAR (La Gran Fusión)
     suspend fun refreshMedia() {
         try {
-            // A) Truco anti-caché para descargar siempre el archivo fresco
-            val uniqueUrl = "$JSON_URL?t=${System.currentTimeMillis()}"
-            val appData = client.get(uniqueUrl).body<AppData>()
-
-            // B) Convertimos el árbol JSON a una lista plana de Entities
             val masterList = mutableListOf<MediaEntity>()
+            val timestamp = System.currentTimeMillis() // Truco anti-caché
 
-            // Función auxiliar para mapear
-            fun mapToEntity(list: List<CarouselItem>?, category: String) {
-                list?.forEach { item ->
-                    masterList.add(
-                        MediaEntity(
-                            category = category,
-                            title = item.title,
-                            artist = item.artist,
-                            imageUrl = item.imageUrl,
-                            targetUrl = item.targetUrl,
-                            appPackageName = item.appPackageName
-                        )
-                    )
-                }
+            // --- A) DESCARGAR MÚSICA (Estático) ---
+            try {
+                val staticData = client.get("$STATIC_URL?t=$timestamp").body<AppData>()
+
+                // Mapeamos las secciones de música
+                mapToEntity(staticData.Spotify, "Spotify", masterList)
+                mapToEntity(staticData.Bandcamp, "Bandcamp", masterList)
+                mapToEntity(staticData.Soundcloud, "Soundcloud", masterList)
+                mapToEntity(staticData.GUZZ, "GUZZ", masterList)
+                mapToEntity(staticData.YouTube, "YouTube", masterList)
+
+                Log.d("REPO", "Música cargada correctamente")
+            } catch (e: Exception) {
+                Log.e("REPO", "Fallo al cargar música", e)
             }
 
-            // Mapeamos cada sección
-            mapToEntity(appData.GUZZ, "GUZZ")
-            mapToEntity(appData.Spotify, "Spotify")
-            mapToEntity(appData.Bandcamp, "Bandcamp")
-            mapToEntity(appData.Soundcloud, "Soundcloud")
-            mapToEntity(appData.YouTube, "YouTube")
-            // Concepto/Entradas lo ignoramos porque va por RSS,
-            // pero si quisieras guardarlo también, añádelo aquí.
+            // --- B) DESCARGAR NOTICIAS (Dinámico - WordPress) ---
+            try {
+                val dynamicData = client.get("$DYNAMIC_URL?t=$timestamp").body<AppData>()
 
-            // C) Transacción de Base de Datos: Borrar viejo -> Meter nuevo
+                // Mapeamos las secciones de noticias
+                mapToEntity(dynamicData.Audio, "Audio", masterList)
+                mapToEntity(dynamicData.Divulgacion, "Divulgacion", masterList) // Ojo: Clave JSON sin tilde
+                mapToEntity(dynamicData.Blog, "Blog", masterList)
+
+                Log.d("REPO", "Noticias cargadas correctamente")
+            } catch (e: Exception) {
+                Log.e("REPO", "Fallo al cargar noticias", e)
+            }
+
+            // --- C) GUARDAR TODO EN BASE DE DATOS ---
             if (masterList.isNotEmpty()) {
                 mediaDao.clearAll()
                 mediaDao.insertAll(masterList)
-                Log.d("MENTAT_REPO", "JSON actualizado: ${masterList.size} items guardados.")
+                Log.d("REPO", "FUSIÓN COMPLETADA: ${masterList.size} items guardados.")
             }
 
         } catch (e: Exception) {
-            Log.e("MediaRepository", "Error actualizando JSON", e)
-            // No hacemos nada más: si falla, la app seguirá mostrando los datos viejos de Room
+            Log.e("MediaRepository", "Error general en refreshMedia", e)
+        }
+    }
+
+    // HELPER: Convertidor de JSON a Base de Datos
+    private fun mapToEntity(list: List<CarouselItem>?, category: String, targetList: MutableList<MediaEntity>) {
+        list?.forEach { item ->
+            targetList.add(
+                MediaEntity(
+                    category = category,
+
+                    // Español
+                    title = item.title,
+                    content = item.content,
+                    artist = item.artist, // En noticias, aquí va la fecha
+                    imageUrl = item.imageUrl,
+                    targetUrl = item.targetUrl,
+
+                    // Inglés (Mapeamos desde el JSON)
+                    titleEn = item.title_en,
+                    contentEn = item.content_en,
+                    targetUrlEn = item.targetUrl_en,
+
+                    // Sistema
+                    appPackageName = item.appPackageName
+                )
+            )
         }
     }
 }

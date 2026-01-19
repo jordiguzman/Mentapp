@@ -15,25 +15,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.platform.LocalContext
 import mentat.music.com.mentapp.R
 
-/**
- * Un Composable reutilizable que dibuja el fondo del Atractor de Clifford.
- *
- * @param modifier El Modifier a aplicar.
- * @param isFrozen Si la animación del shader debe estar congelada.
- * @param frozenTime El valor 'time' específico en el que congelar.
- */
+// Colores definidos
+val MentatRed = Color(0.8f, 0.0f, 0.3f, 1.0f)
+val MentatBlue = Color(0.15f, 0.3f, 0.7f, 1.0f)
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun AttractorBackground(
     modifier: Modifier = Modifier,
     isFrozen: Boolean,
-    frozenTime: Float
+    frozenTime: Float,
+    isBlueMode: Boolean
 ) {
-    // --- Lógica del Shader (Movida desde HomeScreen) ---
+    // --- SIN ANIMACIÓN: CORTE DIRECTO ---
+    // Elegimos el color directamente según el modo. ¡PUM!
+    val targetColor = if (isBlueMode) MentatBlue else MentatRed
+
+    // --- Lógica del Shader ---
     val context = LocalContext.current
     val shaderString = remember {
         context.resources.openRawResource(R.raw.attractor_shader)
@@ -53,15 +56,21 @@ fun AttractorBackground(
         ), label = "time"
     )
 
-    // --- El Dibujo ---
     Box(
         modifier = modifier
             .drawWithCache {
-                // Decide si usar el tiempo animado o el tiempo congelado
                 val timeToRender = if (isFrozen) frozenTime else time
 
                 shader.setFloatUniform("u_time", timeToRender)
                 shader.setFloatUniform("u_resolution", size.width - 100f, size.height - 100f)
+
+                // Inyectamos el color directo
+                shader.setFloatUniform(
+                    "u_color",
+                    targetColor.red,
+                    targetColor.green,
+                    targetColor.blue
+                )
 
                 onDrawBehind {
                     drawRect(brush)

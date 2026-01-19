@@ -12,19 +12,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import mentat.music.com.mentapp.data.PostEntity
 import mentat.music.com.mentapp.data.local.AppDatabase
 import mentat.music.com.mentapp.data.local.entity.MediaEntity
 import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.data.repository.MediaRepository
-import mentat.music.com.mentapp.data.repository.PostRepository
+// import mentat.music.com.mentapp.data.repository.PostRepository // Ya no lo usamos para el flujo principal
 
-// --- CONSTANTES DE UI (Sin cambios) ---
+// --- CONSTANTES DE UI ---
 private val angleStep = (2 * Math.PI.toFloat() / 7)
 private val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 private val BANDCAMP_START_ANGLE = targetAngleRad - (angleStep * 5)
@@ -46,36 +45,57 @@ class HomeViewModel(
     private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
-    // --- 1. INICIALIZACIÓN DE BASES DE DATOS Y REPOSITORIOS ---
+    // --- 1. INICIALIZACIÓN ---
     private val database = AppDatabase.getDatabase(application)
 
-    // Repositorio de Noticias (RSS)
-    private val postRepository = PostRepository(database.postDao())
-
-    // NUEVO: Repositorio de Música/Video (JSON -> Room)
+    // Repositorio Principal (JSON -> Room)
     private val mediaRepository = MediaRepository(database.mediaDao())
 
-    // --- 2. GESTIÓN DE IDIOMA (RSS) ---
+    // (Opcional) Si quieres mantener RSS para algo legacy, déjalo,
+    // pero Audio/Blog/Divulgación ahora van por mediaRepository.
+    // private val postRepository = PostRepository(database.postDao())
+
+    // --- 2. GESTIÓN DE IDIOMA ---
     enum class Language { ES, EN }
     private val _currentLanguage = MutableStateFlow(Language.ES)
     val currentLanguage: StateFlow<Language> = _currentLanguage.asStateFlow()
 
-    // Flujo de Noticias (RSS) - Igual que antes
-    val newsPosts: StateFlow<List<PostEntity>> = _currentLanguage
-        .flatMapLatest { lang ->
-            val langCode = if (lang == Language.ES) "es" else "en"
-            postRepository.getPosts(langCode)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun toggleLanguage() {
+        _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
+        // Al cambiar idioma, refrescamos datos porsiaca
+        refreshAllData()
+    }
+
+    // --- 3. LÓGICA DE FILTRADO (LO NUEVO) ---
+
+    // Variable para saber qué categoría quiere ver el usuario (Audio, Blog, Divulgacion...)
+    private val _selectedCategory = MutableStateFlow("Blog") // Valor por defecto
+
+    // FUNCIÓN QUE LLAMA LA UI AL PULSAR UN BOTÓN
+    fun filterByCategory(category: String) {
+        _selectedCategory.value = category
+    }
+
+    // FLUJO DE NOTICIAS (Sustituye al antiguo RSS)
+    // Combina: "Todos los datos de Room" + "Categoría seleccionada"
+    val newsPosts: StateFlow<List<MediaEntity>> = combine(
+        mediaRepository.allMedia,
+        _selectedCategory
+    ) { allItems, category ->
+        // Filtramos la lista gigante de Room para dejar solo lo que pide el botón
+        allItems.filter { it.category.equals(category, ignoreCase = true) }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
 
-    // --- 3. NUEVO FLUJO PRINCIPAL (JSON -> ROOM -> UI) ---
-    // Aquí ocurre la magia: La UI observa la base de datos, no internet.
+    // --- 4. FLUJO PRINCIPAL (MÚSICA / JSON ESTÁTICO) ---
     val appState: StateFlow<AppState> = mediaRepository.allMedia
         .map { mediaList ->
-            // Convertimos la lista plana de Room a la estructura AppData
             if (mediaList.isEmpty()) {
-                AppState.Loading // O Success vacío si prefieres
+                AppState.Loading
             } else {
                 val organizedData = AppData(
                     GUZZ = filterAndMap(mediaList, "GUZZ"),
@@ -83,7 +103,14 @@ class HomeViewModel(
                     Bandcamp = filterAndMap(mediaList, "Bandcamp"),
                     Soundcloud = filterAndMap(mediaList, "Soundcloud"),
                     YouTube = filterAndMap(mediaList, "YouTube"),
-                    Concepto = null // Este va por RSS (newsPosts), así que null aquí
+
+                    // Estas categorías ahora se gestionan via 'newsPosts' filtrado,
+                    // pero si quisieras tenerlas aquí también, podrías mapearlas.
+                    // De momento las dejamos a null para no duplicar lógica visual antigua.
+                    Audio = null,
+                    Divulgacion = null,
+                    Blog = null,
+                    Concepto = null
                 )
                 AppState.Success(organizedData)
             }
@@ -95,22 +122,24 @@ class HomeViewModel(
         )
 
     init {
-        // AL ARRANCAR:
-        // 1. Bajamos noticias (RSS)
-        downloadAllRssData()
+        refreshAllData()
+    }
 
-        // 2. Bajamos JSON y actualizamos Room (Música/Video)
+    private fun refreshAllData() {
         viewModelScope.launch(Dispatchers.IO) {
-            Log.d("MENTAT_ViewModel", "Iniciando sincronización de Medios...")
+            Log.d("MENTAT_ViewModel", "Refrescando datos...")
             mediaRepository.refreshMedia()
         }
     }
 
     // --- HELPERS ---
     private fun filterAndMap(list: List<MediaEntity>, category: String): List<CarouselItem> {
-        return list.filter { it.category == category }.map { entity ->
+        // Aquí podríamos meter lógica de idioma (title vs titleEn) si el carrusel lo pide directo
+        return list.filter { it.category.equals(category, ignoreCase = true) }.map { entity ->
             CarouselItem(
                 title = entity.title,
+                // OJO: Si entity tiene titleEn, aquí podrías decidir cuál pasar según _currentLanguage.value
+                // De momento pasamos el default.
                 artist = entity.artist,
                 imageUrl = entity.imageUrl,
                 targetUrl = entity.targetUrl,
@@ -119,25 +148,11 @@ class HomeViewModel(
         }
     }
 
-    fun toggleLanguage() {
-        _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        downloadAllRssData()
-    }
-
-    private fun downloadAllRssData() {
-        viewModelScope.launch(Dispatchers.IO) {
-            postRepository.refreshPosts("es")
-            postRepository.refreshPosts("en")
-        }
-    }
-
-    // --- ESTADO DE UI (Sin cambios) ---
+    // --- ESTADO DE UI (Paginación, Rotación, Animaciones) ---
     private val _currentPage = mutableIntStateOf(0)
     val currentPage: State<Int> = _currentPage
-
     fun setCurrentPage(page: Int) { _currentPage.value = page }
 
-    // Gestión de rotación y animaciones
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
 

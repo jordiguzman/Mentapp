@@ -2,7 +2,7 @@ package mentat.music.com.mentapp.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import mentat.music.com.mentapp.data.PostEntity
-import mentat.music.com.mentapp.data.local.PostDao
+import mentat.music.com.mentapp.data.local.dao.PostDao
 import mentat.music.com.mentapp.data.remote.RetrofitClient
 import mentat.music.com.mentapp.utils.DateUtils
 import java.util.regex.Pattern

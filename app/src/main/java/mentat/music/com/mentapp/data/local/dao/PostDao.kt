@@ -1,4 +1,4 @@
-package mentat.music.com.mentapp.data.local
+package mentat.music.com.mentapp.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
@@ -12,7 +12,7 @@ interface PostDao {
 
     // 1. Insertar una lista de noticias (o una sola)
     // Si ya existe (mismo Link), la reemplaza.
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.Companion.REPLACE)
     suspend fun insertPosts(posts: List<PostEntity>)
 
     // 2. Leer noticias filtradas por idioma
