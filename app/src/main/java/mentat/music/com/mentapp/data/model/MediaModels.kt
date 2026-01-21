@@ -4,17 +4,28 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class CarouselItem(
+    val id: String? = null,
+    val title: String? = null,
     val imageUrl: String? = null,
     val targetUrl: String? = null,
-    val title: String? = null,
-    val content: String? = null, // <--- NUEVO: Resumen en Español
-    val artist: String? = null,
-    val appPackageName: String? = null,
+    val category: String? = null,
 
-    // --- NUEVOS CAMPOS EN INGLÉS (Deben llamarse igual que en el JSON) ---
-    val title_en: String? = null,
-    val content_en: String? = null,
-    val targetUrl_en: String? = null
+    // --- MAPEO CLAVE ---
+    // En el JSON nuevo, 'artist' trae el RESUMEN en Español
+    val artist: String? = null,
+
+    // En el JSON nuevo, 'content' viene vacío (pero lo definimos para que no falle)
+    val content: String? = null,
+
+    // --- CAMPOS NUEVOS (Coincidiendo con el JSON del Servidor) ---
+    val titleEn: String? = null,      // Ojo: camelCase (sin guion bajo)
+    val artistEn: String? = null,     // Aquí viene el Resumen en Inglés
+    val contentEn: String? = null,    // Vacío
+    val targetUrlEn: String? = null,  // URL Inglesa
+
+    val date: String? = null,         // ¡Importante! La fecha de publicación
+
+    val appPackageName: String? = null
 )
 
 @Serializable

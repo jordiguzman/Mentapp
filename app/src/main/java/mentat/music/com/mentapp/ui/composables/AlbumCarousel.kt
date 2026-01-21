@@ -73,7 +73,6 @@ fun AlbumCarousel(
     onPageChanged: (Int) -> Unit
 ) {
     val sidePadding = if (isConceptMode) 16.dp else 48.dp
-    val vibrator = rememberVibrator()
 
     val pagerState = rememberPagerState(
         initialPage = initialPage,
@@ -122,7 +121,7 @@ fun AlbumCarousel(
 }
 
 /**
- * La tarjeta individual con la TRANSICIÓN SUAVE añadida
+ * La tarjeta individual con la LÓGICA DE TEXTO CORREGIDA
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
@@ -195,10 +194,11 @@ fun AlbumCard(
             )
         }
 
-        // --- 2. TEXTOS (Sin cambios) ---
+        // --- 2. TEXTOS CORREGIDOS ---
         if (isConceptMode) {
             Spacer(Modifier.height(16.dp))
 
+            // TÍTULO
             item.title?.let { title ->
                 Text(
                     text = title.uppercase(),
@@ -213,7 +213,9 @@ fun AlbumCard(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            item.artist?.let { artistText ->
+
+            // CUERPO (RESUMEN): Ahora leemos 'content' que es donde pusimos el resumen en el mapeo
+            item.content?.let { summaryText ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -221,7 +223,7 @@ fun AlbumCard(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = artistText,
+                        text = summaryText,
                         fontSize = 18.sp,
                         lineHeight = 24.sp,
                         fontWeight = FontWeight.Normal,
@@ -229,11 +231,27 @@ fun AlbumCard(
                         textAlign = TextAlign.Start,
                         fontFamily = verdanaFontFamily,
                     )
+
+                    // FECHA: Ahora leemos 'artist' que es donde pusimos la fecha en el mapeo
+                    item.artist?.let { dateText ->
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = dateText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray,
+                            textAlign = TextAlign.End,
+                            fontFamily = verdanaFontFamily,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     Spacer(Modifier.height(16.dp))
                 }
             }
 
         } else {
+            // --- MODO ALBUM (Sin cambios, usa 'artist' para el grupo) ---
             Spacer(Modifier.weight(1f))
             item.title?.let { title ->
                 Text(

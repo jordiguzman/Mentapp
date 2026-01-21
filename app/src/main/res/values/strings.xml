@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name" translatable="false">Mentapp</string>
 
-    <string name="dial_title_info">MENTAT INFO</string>
-    <string name="dial_title_audio">MENTAT AUDIO</string>
+    <string name="dial_title">MENTAPP</string>
+
 
     <string name="cat_tutorials">Tutoriales</string>
     <string name="cat_science">Divulgación</string>

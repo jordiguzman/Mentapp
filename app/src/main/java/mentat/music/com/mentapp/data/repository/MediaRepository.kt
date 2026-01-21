@@ -17,8 +17,8 @@ import mentat.music.com.mentapp.data.model.CarouselItem
 class MediaRepository(private val mediaDao: MediaDao) {
 
     // DOS FUENTES DE DATOS:
-    private val STATIC_URL = "https://mentat-music.com/mentapp/mentat_data_DEF.json"
-    private val DYNAMIC_URL = "https://mentat-music.com/mentapp/app_data.json"
+    private val STATIC_URL = "https://mentat-music.com/mentapp_server/mentat_data_DEF.json"
+    private val DYNAMIC_URL = "https://www.mentat-music.com/mentapp_server/app_data.json"
 
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -89,15 +89,23 @@ class MediaRepository(private val mediaDao: MediaDao) {
 
                     // Español
                     title = item.title,
-                    content = item.content,
-                    artist = item.artist, // En noticias, aquí va la fecha
+
+                    // CAMBIO 1: El contenido visual ahora coge el resumen (que venía en 'artist' en el JSON)
+                    content = item.artist,
+
+                    // CAMBIO 2: Donde la App espera la fecha (campo 'artist' de la DB), metemos la fecha del JSON
+                    artist = item.date,
+
                     imageUrl = item.imageUrl,
                     targetUrl = item.targetUrl,
 
-                    // Inglés (Mapeamos desde el JSON)
-                    titleEn = item.title_en,
-                    contentEn = item.content_en,
-                    targetUrlEn = item.targetUrl_en,
+                    // Inglés
+                    titleEn = item.titleEn, // (Asegúrate que en CarouselItem se llame titleEn o title_en)
+
+                    // CAMBIO 3: Lo mismo para el inglés
+                    contentEn = item.artistEn,
+
+                    targetUrlEn = item.targetUrlEn,
 
                     // Sistema
                     appPackageName = item.appPackageName

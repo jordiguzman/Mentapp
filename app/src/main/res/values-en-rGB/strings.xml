@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="dial_title_info">MENTAT INFO</string>
-    <string name="dial_title_audio">MENTAT AUDIO</string>
+    <string name="dial_title">MENTAPP</string>
+
 
     <string name="cat_tutorials">Tutorials</string>
     <string name="cat_science">Science</string>

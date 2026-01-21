@@ -2,8 +2,10 @@ package mentat.music.com.mentapp.ui.screens.home.viewmodel
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -155,6 +157,7 @@ class HomeViewModel(
 
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
+
 
     val isAnimatingOut: StateFlow<Boolean> = savedStateHandle.getStateFlow(ANIMATING_OUT_KEY, false)
     fun updateIsAnimatingOut(isAnimating: Boolean) { savedStateHandle[ANIMATING_OUT_KEY] = isAnimating }

@@ -9,8 +9,11 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -36,14 +39,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.* // Iconos del sistema
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,10 +67,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -94,13 +98,14 @@ import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.composables.AlbumCarousel
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
-import mentat.music.com.mentapp.ui.composables.DialItem // <--- Asegúrate de importar esto
+import mentat.music.com.mentapp.ui.composables.DialItem
+import mentat.music.com.mentapp.ui.composables.SolarisPlayButton
 import mentat.music.com.mentapp.ui.composables.TRANSITION_DURATION
 import mentat.music.com.mentapp.ui.composables.VideoBackground
 import mentat.music.com.mentapp.ui.rememberVibrator
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
-import mentat.music.com.mentapp.utils.MentatConstants // <--- Importar constantes
+import mentat.music.com.mentapp.utils.MentatConstants
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
@@ -124,6 +129,9 @@ fun HomeScreen(
     val clickedIconIndex by homeViewModel.clickedIconIndex.collectAsState()
     val isExpansionFinished by homeViewModel.isExpansionFinished.collectAsState()
     val newsPosts by homeViewModel.newsPosts.collectAsState()
+
+    // VARIABLE PARA EFECTO FLIP (Moneda 3D)
+    val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
 
     // ESTADO PARA EL DIAL (True = Info, False = Audio)
     var isMainDial by remember { mutableStateOf(true) }
@@ -256,15 +264,15 @@ fun HomeScreen(
                 launchUrl(MentatConstants.URL_BANDCAMP_LATEST)
             },
             // NUEVOS (Iconos del Sistema) -> Usan lógica de carrusel (Filtro Audio)
-            DialItem("Audio", "Tutoriales", Icons.Default.Build, Color(0xFFFFA500)) {
+            DialItem("Audio", "Tutoriales", Icons.Default.Call, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Audio")
                 activateExpansion(4) // Índice manual en la lista
             },
-            DialItem("Divulgacion", "Ciencia", Icons.Default.Search, Color(0xFF00CED1)) {
+            DialItem("Divulgacion", "Ciencia", Icons.Default.Star, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Divulgacion")
                 activateExpansion(5)
             },
-            DialItem("Blog", "Blog", Icons.Default.Edit, Color(0xFFFF69B4)) {
+            DialItem("Blog", "Blog", Icons.Default.Create, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Blog")
                 activateExpansion(6)
             }
@@ -327,7 +335,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 isFrozen = isAnimatingOut || isExpansionFinished,
                 frozenTime = frozenTime,
-                isBlueMode = !isMainDial // <--- AÑADE ESTA LÍNEA (Negamos isMainDial)
+                isBlueMode = !isMainDial
             )
         } else {
             VideoBackground(modifier = Modifier.fillMaxSize())
@@ -375,7 +383,7 @@ fun HomeScreen(
             ) {
                 // TÍTULO MENTAPP
                 Text(
-                    text = if(isMainDial) stringResource(R.string.dial_title_info) else stringResource(R.string.dial_title_audio),
+                    text = stringResource(R.string.dial_title),
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 22.sp,
                     fontFamily = verdanaFontFamily,
@@ -386,7 +394,6 @@ fun HomeScreen(
                 )
 
                 // BOTONES ESQUINA SUPERIOR DERECHA (Power & Idioma)
-                // ... (Igual que antes) ...
                 Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
                         .clickable {
@@ -410,7 +417,16 @@ fun HomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .scale(dialScale.value),
+                        .scale(dialScale.value)
+                        .graphicsLayer {
+                            // AQUÍ ESTÁ EL TRUCO VISUAL:
+                            // Multiplicamos la escala X por nuestra variable de "giro de moneda"
+                            // Esto lo pusiste tú y ESTÁ PERFECTO
+                            scaleX = dialScale.value * dialFlipX.value
+
+                            scaleY = dialScale.value
+                            rotationZ = rotationAngle.value
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     // 1. Círculos de fondo (Canvas)
@@ -440,54 +456,59 @@ fun HomeScreen(
                     // 3. LA RUEDA (CircularDialLayout) -> Versión Híbrida
                     CircularDialLayout(
                         modifier = Modifier.fillMaxSize(),
-                        items = currentItems, // <--- Pasamos la lista activa (1 o 2)
+                        items = currentItems,
                         currentRotation = rotationAngle.value,
                         iconPathRadius = iconPathRadius,
                         isAnimatingOut = isAnimatingOut,
                         clickedIconIndex = clickedIconIndex,
                         isExpansionFinished = isExpansionFinished
-                        // Nota: El 'onIconClick' ahora está dentro de cada item
-                        // Nota: El 'contentFor' ya no es necesario, el layout pinta los iconos
                     )
 
-                    // 4. BOTÓN CENTRAL (Para cambiar de Dial)
+                    // 4. BOTÓN CENTRAL (Versión FINAL: Coin Flip Lento + Caída)
                     if (!isAnimatingOut && !isExpansionFinished) {
-                        Button(
+                        SolarisPlayButton(
+                            size = 80.dp,
                             onClick = {
-                                // 1. EL PUM FÍSICO (Vibración)
-                                vibrator.vibrateClick()
-
-                                // 2. EL PUM LÓGICO (Cambio instantáneo de datos y color)
-                                isMainDial = !isMainDial
-
-                                // 3. EL PUM VISUAL (Rebote/Aterrizaje)
-                                // Usamos la misma animación que al iniciar la app
                                 scope.launch {
-                                    // Primero rotamos a 0 rápido para que quede recto
-                                    rotationAngle.animateTo(0f, tween(300))
+                                    // 1. GIRO (CERRAR): Más lento (250ms) para disfrutarlo
+                                    dialFlipX.animateTo(
+                                        targetValue = 0.0f,
+                                        animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing)
+                                    )
+
+                                    // 2. EL CAMBIAZO (Invisible)
+                                    isMainDial = !isMainDial
+                                    vibrator.vibrateClick()
+
+                                    // 3. LA APERTURA ESPECTACULAR (Dos cosas a la vez)
+
+                                    // A) La moneda se abre (Horizontal)
+                                    launch {
+                                        dialFlipX.animateTo(
+                                            targetValue = 1.0f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.7f,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+
+                                    // B) El dial cae de golpe (Vertical) - EFECTO CAÍDA
+                                    launch {
+                                        // Truco: Lo hacemos un pelín grande (1.15) para que al caer a 1.0
+                                        // se note el impacto del peso.
+                                        dialScale.snapTo(1.15f)
+                                        dialScale.animateTo(
+                                            targetValue = 1.0f,
+                                            animationSpec = bounceSpec // Tu rebote clásico
+                                        )
+                                    }
                                 }
-                                scope.launch {
-                                    // Hacemos que el dial "salte" un poco (1.1x) y caiga de golpe (1.0x)
-                                    dialScale.snapTo(1.1f)
-                                    dialScale.animateTo(targetValue = 1.0f, animationSpec = bounceSpec)
-                                }
-                            },
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha=0.8f)),
-                            modifier = Modifier.size(80.dp)
-                        ) {
-                            Text(
-                                text = if(isMainDial) "AUDIO" else "INFO",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             }
-
 
             // --- CAPA CARRUSEL (Lógica actualizada) ---
             val appData: AppData? = remember(appState) {
@@ -498,7 +519,6 @@ fun HomeScreen(
                 }
             }
 
-            // OBTENEMOS EL ID DEL ITEM CLICADO (Usando la lista actual)
             val clickedItemId = if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
                 currentItems[clickedIconIndex].id else null
 
@@ -527,8 +547,8 @@ fun HomeScreen(
                             CarouselItem(
                                 title = entity.title,
                                 imageUrl = entity.imageUrl,
-                                targetUrl = entity.targetUrl, // Ojo aquí, usaba link antes
-                                artist = snippet // Snippet en el campo artist
+                                targetUrl = entity.targetUrl,
+                                artist = snippet
                             )
                         }
                     }
@@ -545,11 +565,9 @@ fun HomeScreen(
                 label = "carouselLayerAlpha"
             )
 
-            // Color de fondo según el item clicado
             val brandColor = if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
                 currentItems[clickedIconIndex].color else Color.Transparent
 
-            // Si es un modo de lectura (Audio, Divulgacion, Blog)
             val isConceptMode = (clickedItemId in listOf("Audio", "Divulgacion", "Blog"))
 
             val carouselBoxModifier = if (isPortrait) {
@@ -595,14 +613,6 @@ fun HomeScreen(
                             Text("Error cargar datos.", color = Color.White, textAlign = TextAlign.Center, fontFamily = verdanaFontFamily)
                         }
                     }
-
-                    // ICONO DE FONDO EN EL CARRUSEL (Marca de agua)
-                    // (Aquí necesitaríamos adaptar para pintar Vector o PNG, por simplicidad usamos solo PNG si existe
-                    // o lo omitimos si es vector para no complicar el layout Box)
-                    /* if (clickedIconIndex != -1) {
-                         // Lógica visual opcional
-                    }
-                    */
                 }
             }
         }
