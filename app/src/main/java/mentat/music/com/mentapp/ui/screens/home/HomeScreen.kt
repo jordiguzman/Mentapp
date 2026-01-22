@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -62,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -132,7 +134,7 @@ fun HomeScreen(
 
     // VARIABLE PARA EFECTO FLIP (Moneda 3D)
     val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
-
+    val dialBlur = remember { Animatable(0f) }
     // ESTADO PARA EL DIAL (True = Info, False = Audio)
     var isMainDial by remember { mutableStateOf(true) }
 
@@ -310,16 +312,38 @@ fun HomeScreen(
     // Seleccionamos la lista activa
     val currentItems = if (isMainDial) itemsDial1 else itemsDial2
 
-    // --- BACK HANDLER ---
+    // --- BACK HANDLER (Física en 2 Pasos: Hundimiento + Rebote) ---
     BackHandler(enabled = isAnimatingOut || isExpansionFinished) {
         scope.launch {
             homeViewModel.updateIsExpansionFinished(false)
             homeViewModel.updateIsAnimatingOut(false)
-            delay(TRANSITION_DURATION.toLong())
-            scope.launch {
-                dialScale.snapTo(bounceStartScale)
-                dialScale.animateTo(targetValue = 1.0f, animationSpec = bounceSpec)
-            }
+
+            // Sincronización (-150ms)
+            // Esto hace que la animación empiece justo antes de que llegue el icono,
+            // perfecto para que se vea el hundimiento mientras aterriza.
+            val impactTime = (TRANSITION_DURATION - 150).coerceAtLeast(0)
+            delay(impactTime.toLong())
+
+            // --- FASE 1: EL IMPACTO (Hundimiento) ---
+            // Antes usábamos snapTo (instantáneo). Ahora animamos la bajada.
+            dialScale.animateTo(
+                targetValue = 0.92f,
+                animationSpec = tween(
+                    durationMillis = 120, // Tarda un poco en hundirse (puedes subirlo a 150 si quieres más drama)
+                    easing = FastOutLinearInEasing // Empieza rápido, frena de golpe al chocar
+                )
+            )
+
+            // --- FASE 2: LA RECUPERACIÓN (La que te gusta) ---
+            dialScale.animateTo(
+                targetValue = 1.0f,
+                animationSpec = spring(
+                    dampingRatio = 0.35f, // Gomoso
+                    stiffness = Spring.StiffnessVeryLow // Lento y majestuoso
+                )
+            )
+
+            // Limpieza final
             homeViewModel.updateClickedIconIndex(-1)
             rotationAngle.snapTo(homeViewModel.rotationAngle.value)
         }
@@ -418,6 +442,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .scale(dialScale.value)
+                        .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
                         .graphicsLayer {
                             // AQUÍ ESTÁ EL TRUCO VISUAL:
                             // Multiplicamos la escala X por nuestra variable de "giro de moneda"
@@ -464,44 +489,63 @@ fun HomeScreen(
                         isExpansionFinished = isExpansionFinished
                     )
 
-                    // 4. BOTÓN CENTRAL (Versión FINAL: Coin Flip Lento + Caída)
+                    // 4. BOTÓN CENTRAL (Versión FINAL: Blur Progresivo 0 -> MAX -> 0)
                     if (!isAnimatingOut && !isExpansionFinished) {
                         SolarisPlayButton(
                             size = 80.dp,
                             onClick = {
                                 scope.launch {
-                                    // 1. GIRO (CERRAR): Más lento (250ms) para disfrutarlo
-                                    dialFlipX.animateTo(
-                                        targetValue = 0.0f,
-                                        animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing)
-                                    )
+                                    // --- FASE 1: ACELERACIÓN (De 0 a Mitad) ---
+                                    // Todo ocurre en 250ms
 
-                                    // 2. EL CAMBIAZO (Invisible)
-                                    isMainDial = !isMainDial
-                                    vibrator.vibrateClick()
-
-                                    // 3. LA APERTURA ESPECTACULAR (Dos cosas a la vez)
-
-                                    // A) La moneda se abre (Horizontal)
+                                    // A) La moneda se cierra
                                     launch {
                                         dialFlipX.animateTo(
-                                            targetValue = 1.0f,
-                                            animationSpec = spring(
-                                                dampingRatio = 0.7f,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
+                                            targetValue = 0.0f,
+                                            animationSpec = tween(250, easing = FastOutLinearInEasing)
                                         )
                                     }
 
-                                    // B) El dial cae de golpe (Vertical) - EFECTO CAÍDA
+                                    // B) El Blur SUBE progresivamente de 0 a 10
+                                    // Usamos LinearEasing para que la subida sea constante y se note la velocidad
                                     launch {
-                                        // Truco: Lo hacemos un pelín grande (1.15) para que al caer a 1.0
-                                        // se note el impacto del peso.
-                                        dialScale.snapTo(1.15f)
-                                        dialScale.animateTo(
-                                            targetValue = 1.0f,
-                                            animationSpec = bounceSpec // Tu rebote clásico
+                                        dialBlur.animateTo(
+                                            targetValue = 10f, // Máximo blur justo en el medio
+                                            animationSpec = tween(250, easing = LinearEasing)
                                         )
+                                    }
+
+                                    // Esperamos a que termine la Fase 1
+                                    delay(250)
+
+                                    // --- FASE 2: EL PICO (Cambio de datos) ---
+                                    // Aquí estamos en el "ojo del huracán": Blur al máximo, moneda invisible
+                                    isMainDial = !isMainDial
+                                    vibrator.vibrateClick()
+
+                                    // --- FASE 3: FRENADA (De Mitad a Final) ---
+
+                                    // A) La moneda se abre
+                                    launch {
+                                        dialFlipX.animateTo(
+                                            targetValue = 1.0f,
+                                            animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)
+                                        )
+                                    }
+
+                                    // B) El Blur BAJA progresivamente de 10 a 0
+                                    // Desaparece a medida que la moneda recupera su forma
+                                    launch {
+                                        dialBlur.animateTo(
+                                            targetValue = 0f, // Vuelve a estar nítido
+                                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                        )
+                                    }
+
+                                    // C) Golpe de peso (Bounce)
+                                    launch {
+                                        dialScale.snapTo(1.15f)
+                                        dialScale.animateTo(1.0f, animationSpec = bounceSpec)
                                     }
                                 }
                             }

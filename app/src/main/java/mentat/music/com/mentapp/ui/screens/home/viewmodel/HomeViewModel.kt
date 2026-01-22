@@ -2,10 +2,8 @@ package mentat.music.com.mentapp.ui.screens.home.viewmodel
 
 import android.app.Application
 import android.util.Log
-import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -23,7 +21,6 @@ import mentat.music.com.mentapp.data.local.entity.MediaEntity
 import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.data.repository.MediaRepository
-// import mentat.music.com.mentapp.data.repository.PostRepository // Ya no lo usamos para el flujo principal
 
 // --- CONSTANTES DE UI ---
 private val angleStep = (2 * Math.PI.toFloat() / 7)
@@ -49,13 +46,7 @@ class HomeViewModel(
 
     // --- 1. INICIALIZACIÓN ---
     private val database = AppDatabase.getDatabase(application)
-
-    // Repositorio Principal (JSON -> Room)
     private val mediaRepository = MediaRepository(database.mediaDao())
-
-    // (Opcional) Si quieres mantener RSS para algo legacy, déjalo,
-    // pero Audio/Blog/Divulgación ahora van por mediaRepository.
-    // private val postRepository = PostRepository(database.postDao())
 
     // --- 2. GESTIÓN DE IDIOMA ---
     enum class Language { ES, EN }
@@ -64,28 +55,49 @@ class HomeViewModel(
 
     fun toggleLanguage() {
         _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        // Al cambiar idioma, refrescamos datos porsiaca
         refreshAllData()
     }
 
-    // --- 3. LÓGICA DE FILTRADO (LO NUEVO) ---
+    // --- 3. LÓGICA DE FILTRADO (RECUPERADA Y CORREGIDA) ---
 
-    // Variable para saber qué categoría quiere ver el usuario (Audio, Blog, Divulgacion...)
-    private val _selectedCategory = MutableStateFlow("Blog") // Valor por defecto
+    // Estado para saber qué botón ha pulsado el usuario (Audio, Blog, Divulgacion)
+    private val _selectedCategory = MutableStateFlow("Blog") // Por defecto Blog
 
-    // FUNCIÓN QUE LLAMA LA UI AL PULSAR UN BOTÓN
+    // Función que llama tu HomeScreen (¡Recuperada!)
     fun filterByCategory(category: String) {
         _selectedCategory.value = category
     }
 
-    // FLUJO DE NOTICIAS (Sustituye al antiguo RSS)
-    // Combina: "Todos los datos de Room" + "Categoría seleccionada"
-    val newsPosts: StateFlow<List<MediaEntity>> = combine(
+    // El flujo que escucha tu HomeScreen.
+    // AQUÍ APLICAMOS LA MAGIA: Al crear la lista, cruzamos los cables (Artist->Content)
+    val newsPosts: StateFlow<List<CarouselItem>> = combine(
         mediaRepository.allMedia,
         _selectedCategory
     ) { allItems, category ->
-        // Filtramos la lista gigante de Room para dejar solo lo que pide el botón
-        allItems.filter { it.category.equals(category, ignoreCase = true) }
+        allItems
+            .filter { it.category.equals(category, ignoreCase = true) }
+            .map { entity ->
+                // --- CHIVATO DE LA VERDAD ---
+                if (entity.title?.contains("plugins", ignoreCase = true) == true) {
+                    Log.e("MENTAPP_VM", "LEYENDO DE DB -> ID: ${entity.id}")
+                    Log.e("MENTAPP_VM", "LEYENDO DE DB -> Content: ${entity.content?.take(20)}...")
+                    Log.e("MENTAPP_VM", "LEYENDO DE DB -> Artist: ${entity.artist}")
+                }
+                // TRADUCTOR PARA NOTICIAS (Arregla lo del texto cortado)
+                CarouselItem(
+                    id = entity.id.toString(), // Convertimos el ID numérico a String
+                    title = entity.title,
+                    imageUrl = entity.imageUrl,
+                    targetUrl = entity.targetUrl,
+
+                    // 1. EL RESUMEN (Guardado en 'artist') va a 'content' para leerse bien
+                    content = entity.content,
+                    // 2. LA CATEGORÍA va a 'artist' para verse pequeñita abajo
+                    artist = entity.artist,
+
+                    appPackageName = entity.appPackageName
+                )
+            }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -93,7 +105,7 @@ class HomeViewModel(
     )
 
 
-    // --- 4. FLUJO PRINCIPAL (MÚSICA / JSON ESTÁTICO) ---
+    // --- 4. FLUJO PRINCIPAL (MÚSICA) ---
     val appState: StateFlow<AppState> = mediaRepository.allMedia
         .map { mediaList ->
             if (mediaList.isEmpty()) {
@@ -106,9 +118,7 @@ class HomeViewModel(
                     Soundcloud = filterAndMap(mediaList, "Soundcloud"),
                     YouTube = filterAndMap(mediaList, "YouTube"),
 
-                    // Estas categorías ahora se gestionan via 'newsPosts' filtrado,
-                    // pero si quisieras tenerlas aquí también, podrías mapearlas.
-                    // De momento las dejamos a null para no duplicar lógica visual antigua.
+                    // Dejamos esto null porque se usa el newsPosts de arriba
                     Audio = null,
                     Divulgacion = null,
                     Blog = null,
@@ -134,15 +144,16 @@ class HomeViewModel(
         }
     }
 
-    // --- HELPERS ---
+    // --- HELPERS (AYUDANTES) ---
+
+    // Helper clásico para música.
+    // HE AÑADIDO 'id' AQUÍ, QUE ERA LO QUE FALLABA EN TU COMPILACIÓN.
     private fun filterAndMap(list: List<MediaEntity>, category: String): List<CarouselItem> {
-        // Aquí podríamos meter lógica de idioma (title vs titleEn) si el carrusel lo pide directo
         return list.filter { it.category.equals(category, ignoreCase = true) }.map { entity ->
             CarouselItem(
+                id = entity.id.toString(), // <--- ESTO FALTABA y provocaba el error en CarouselItem
                 title = entity.title,
-                // OJO: Si entity tiene titleEn, aquí podrías decidir cuál pasar según _currentLanguage.value
-                // De momento pasamos el default.
-                artist = entity.artist,
+                artist = entity.artist, // En música sí queremos el artista normal
                 imageUrl = entity.imageUrl,
                 targetUrl = entity.targetUrl,
                 appPackageName = entity.appPackageName
@@ -157,7 +168,6 @@ class HomeViewModel(
 
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
-
 
     val isAnimatingOut: StateFlow<Boolean> = savedStateHandle.getStateFlow(ANIMATING_OUT_KEY, false)
     fun updateIsAnimatingOut(isAnimating: Boolean) { savedStateHandle[ANIMATING_OUT_KEY] = isAnimating }

@@ -3,6 +3,7 @@ package mentat.music.com.mentapp.ui.composables
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -130,22 +131,47 @@ fun AlbumCard(
     navController: NavController,
     isConceptMode: Boolean
 ) {
+    // --- 1. LÓGICA DE RESCATE (EL PARCHE MAESTRO) ---
+    // Detectamos si el texto viene en 'content' (lo normal) o en 'artist' (el error actual)
+    // Si el campo 'artist' tiene más de 50 letras, asumimos que es el RESUMEN.
+    val textoEscondidoEnArtist = (item.artist?.length ?: 0) > 50
+
+    val realContent = if (item.content != null) item.content else if (textoEscondidoEnArtist) item.artist else null
+    val isNews = realContent != null
+
+    // Si el texto estaba en 'artist', usamos la 'category' real para la etiqueta amarilla.
+    // Si no, usamos 'artist' (que suele llevar la categoría o fecha en tu lógica original).
+    val realCategoryLabel = if (textoEscondidoEnArtist) item.category else item.artist
+
+    // ... (El resto de variables: uriHandler, context...)
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val vibrator = rememberVibrator()
     val isClickable = item.targetUrl != null
 
+    // 2. ESTRUCTURA VISUAL
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 16.dp),
+            .fillMaxSize() // Ojo: Aquí el padre sí puede tener fillMaxSize
+            .padding(vertical = 16.dp)
+            .clickable(enabled = isClickable) {
+                // ... (Tu código de clic se mantiene igual) ...
+                if (item.targetUrl == null) return@clickable
+                vibrator.vibrateClick()
+                if (item.appPackageName != null) {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.targetUrl))
+                    intent.setPackage(item.appPackageName)
+                    try { context.startActivity(intent) } catch (e: ActivityNotFoundException) { uriHandler.openUri(item.targetUrl) }
+                } else {
+                    navController.navigate(AppScreens.WebViewScreen.createRoute(item.targetUrl))
+                }
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
 
-        // --- 1. LA IMAGEN ---
+        // --- IMAGEN (Igual que tenías) ---
         val imageAspectRatio = if (isConceptMode) 1.5f else 1f
-
         if (item.imageUrl != null) {
             GlideImage(
                 model = item.imageUrl,
@@ -153,134 +179,83 @@ fun AlbumCard(
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .aspectRatio(imageAspectRatio)
-                    .shadow(
-                        elevation = 20.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        clip = false,
-                        ambientColor = Color.White.copy(alpha = 0.7f),
-                        spotColor = Color.White.copy(alpha = 0.7f)
-                    )
-                    .clip(RoundedCornerShape(24.dp))
-                    .clickable(enabled = isClickable) {
-                        if (item.targetUrl == null) return@clickable
-
-                        vibrator.vibrateClick()
-
-                        // LÓGICA ESTÁNDAR Y ROBUSTA
-                        if (item.appPackageName != null) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.targetUrl))
-                            intent.setPackage(item.appPackageName)
-                            try {
-                                context.startActivity(intent)
-                            } catch (e: ActivityNotFoundException) {
-                                // Si no tiene la app instalada, abrimos el navegador/webview
-                                uriHandler.openUri(item.targetUrl)
-                            }
-                        } else {
-                            // Navegación interna a nuestra WebView
-                            navController.navigate(
-                                AppScreens.WebViewScreen.createRoute(item.targetUrl)
-                            )
-                        }
-                    },
+                    .shadow(elevation = 20.dp, shape = RoundedCornerShape(24.dp), clip = false)
+                    .clip(RoundedCornerShape(24.dp)),
                 contentScale = ContentScale.Crop,
-                requestBuilderTransform = {
-                    it.apply(
-                        RequestOptions()
-                            .override(600)
-                            .skipMemoryCache(true)
-                    )
-                }
+                requestBuilderTransform = { it.apply(RequestOptions().override(600).skipMemoryCache(true)) }
             )
         }
 
-        // --- 2. TEXTOS CORREGIDOS ---
-        if (isConceptMode) {
-            Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
 
-            // TÍTULO
-            item.title?.let { title ->
+        // --- A) CATEGORÍA (ETIQUETA AMARILLA) ---
+        if (isNews) {
+            realCategoryLabel?.let { categoryName ->
                 Text(
-                    text = title.uppercase(),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color.White,
+                    text = categoryName.uppercase(),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Yellow,
                     textAlign = TextAlign.Center,
                     fontFamily = verdanaFontFamily,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(0.9f)
                 )
+                Spacer(Modifier.height(4.dp))
             }
-            Spacer(Modifier.height(8.dp))
+        }
 
-            // CUERPO (RESUMEN): Ahora leemos 'content' que es donde pusimos el resumen en el mapeo
-            item.content?.let { summaryText ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = summaryText,
-                        fontSize = 18.sp,
-                        lineHeight = 24.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = Color.White.copy(alpha = 0.8f),
-                        textAlign = TextAlign.Start,
-                        fontFamily = verdanaFontFamily,
-                    )
+        // --- B) TÍTULO ---
+        item.title?.let { title ->
+            Text(
+                text = title.uppercase(),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                fontFamily = verdanaFontFamily,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(0.9f)
+            )
+        }
 
-                    // FECHA: Ahora leemos 'artist' que es donde pusimos la fecha en el mapeo
-                    item.artist?.let { dateText ->
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = dateText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Gray,
-                            textAlign = TextAlign.End,
-                            fontFamily = verdanaFontFamily,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+        Spacer(Modifier.height(8.dp))
 
-                    Spacer(Modifier.height(16.dp))
-                }
-            }
-
-        } else {
-            // --- MODO ALBUM (Sin cambios, usa 'artist' para el grupo) ---
-            Spacer(Modifier.weight(1f))
-            item.title?.let { title ->
+        // --- C) CONTENIDO (USANDO LA VARIABLE RESCATADA) ---
+        if (isNews) {
+            // -- ES NOTICIA --
+            Column(
+                modifier = Modifier
+                    .weight(1f) // Ocupa el espacio restante
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
-                    text = title.uppercase(),
+                    text = realContent ?: "", // Pintamos el texto rescatado
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    fontFamily = verdanaFontFamily,
-                    maxLines = 2,
-                    minLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(0.9f)
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            item.artist?.let { artist ->
-                Text(
-                    text = artist,
-                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
                     fontWeight = FontWeight.Normal,
                     color = Color.White.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Start,
+                    fontFamily = verdanaFontFamily,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        } else {
+            // -- ES MÚSICA --
+            item.artist?.let { artistName ->
+                Text(
+                    text = artistName,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color.White.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
                     fontFamily = verdanaFontFamily,
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth(0.9f)
                 )
             }
-            Spacer(Modifier.height(12.dp))
         }
     }
 }

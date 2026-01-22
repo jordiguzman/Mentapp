@@ -79,38 +79,48 @@ class MediaRepository(private val mediaDao: MediaDao) {
             Log.e("MediaRepository", "Error general en refreshMedia", e)
         }
     }
-
-    // HELPER: Convertidor de JSON a Base de Datos
+    // HELPER: Convertidor de JSON a Base de Datos (ARQUITECTURA CORRECTA)
     private fun mapToEntity(list: List<CarouselItem>?, category: String, targetList: MutableList<MediaEntity>) {
-        list?.forEach { item ->
+        if (list == null) return
+
+        list.forEach { item ->
+
+            // 1. LÓGICA DE CLASIFICACIÓN
+            val esNoticia = category in listOf("Audio", "Blog", "Divulgacion")
+
+            // 2. PREPARACIÓN DE DATOS
+            // Si es noticia, el texto real viene en el JSON 'artist' -> Lo movemos a DB 'content'
+            val textoParaGuardar = if (esNoticia) item.artist else null
+
+            // Si es noticia, queremos la FECHA en el subtítulo. Si es música, el ARTISTA.
+            val subtituloParaGuardar = if (esNoticia) item.date else item.artist
+
+            // 3. DEBUG DE VERIFICACIÓN (Solo para el item problemático)
+            if (item.title?.contains("plugins", ignoreCase = true) == true) {
+                Log.d("MENTAPP_ARCH", "Guardando en DB -> Content: ${textoParaGuardar?.length ?: 0} chars | Artist: $subtituloParaGuardar")
+            }
+
             targetList.add(
                 MediaEntity(
                     category = category,
-
-                    // Español
                     title = item.title,
 
-                    // CAMBIO 1: El contenido visual ahora coge el resumen (que venía en 'artist' en el JSON)
-                    content = item.artist,
+                    // --- AQUÍ ESTÁ LA CORRECCIÓN ---
+                    content = textoParaGuardar,      // El resumen va a su sitio
+                    artist = subtituloParaGuardar,   // La fecha/artista va a su sitio
+                    // -------------------------------
 
-                    // CAMBIO 2: Donde la App espera la fecha (campo 'artist' de la DB), metemos la fecha del JSON
-                    artist = item.date,
+                    titleEn = item.titleEn,
+                    contentEn = item.artistEn, // En inglés mantenemos la lógica similar
 
                     imageUrl = item.imageUrl,
                     targetUrl = item.targetUrl,
-
-                    // Inglés
-                    titleEn = item.titleEn, // (Asegúrate que en CarouselItem se llame titleEn o title_en)
-
-                    // CAMBIO 3: Lo mismo para el inglés
-                    contentEn = item.artistEn,
-
                     targetUrlEn = item.targetUrlEn,
-
-                    // Sistema
                     appPackageName = item.appPackageName
                 )
             )
         }
     }
+
+
 }
