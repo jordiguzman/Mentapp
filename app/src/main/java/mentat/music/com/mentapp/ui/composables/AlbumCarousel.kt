@@ -122,7 +122,7 @@ fun AlbumCarousel(
 }
 
 /**
- * La tarjeta individual con la LÓGICA DE TEXTO CORREGIDA
+ * La tarjeta individual LIMPIA Y CORREGIDA
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
@@ -131,17 +131,9 @@ fun AlbumCard(
     navController: NavController,
     isConceptMode: Boolean
 ) {
-    // --- 1. LÓGICA DE RESCATE (EL PARCHE MAESTRO) ---
-    // Detectamos si el texto viene en 'content' (lo normal) o en 'artist' (el error actual)
-    // Si el campo 'artist' tiene más de 50 letras, asumimos que es el RESUMEN.
-    val textoEscondidoEnArtist = (item.artist?.length ?: 0) > 50
-
-    val realContent = if (item.content != null) item.content else if (textoEscondidoEnArtist) item.artist else null
-    val isNews = realContent != null
-
-    // Si el texto estaba en 'artist', usamos la 'category' real para la etiqueta amarilla.
-    // Si no, usamos 'artist' (que suele llevar la categoría o fecha en tu lógica original).
-    val realCategoryLabel = if (textoEscondidoEnArtist) item.category else item.artist
+    // --- LÓGICA LIMPIA (Clean Architecture) ---
+    // Si hay contenido en 'content', es una noticia/blog. Si está vacío, es música.
+    val isNews = !item.content.isNullOrBlank()
 
     // ... (El resto de variables: uriHandler, context...)
     val uriHandler = LocalUriHandler.current
@@ -152,10 +144,9 @@ fun AlbumCard(
     // 2. ESTRUCTURA VISUAL
     Column(
         modifier = Modifier
-            .fillMaxSize() // Ojo: Aquí el padre sí puede tener fillMaxSize
+            .fillMaxSize()
             .padding(vertical = 16.dp)
             .clickable(enabled = isClickable) {
-                // ... (Tu código de clic se mantiene igual) ...
                 if (item.targetUrl == null) return@clickable
                 vibrator.vibrateClick()
                 if (item.appPackageName != null) {
@@ -170,7 +161,7 @@ fun AlbumCard(
         verticalArrangement = Arrangement.Top
     ) {
 
-        // --- IMAGEN (Igual que tenías) ---
+        // --- IMAGEN ---
         val imageAspectRatio = if (isConceptMode) 1.5f else 1f
         if (item.imageUrl != null) {
             GlideImage(
@@ -190,7 +181,8 @@ fun AlbumCard(
 
         // --- A) CATEGORÍA (ETIQUETA AMARILLA) ---
         if (isNews) {
-            realCategoryLabel?.let { categoryName ->
+            // AQUÍ ESTABA EL ERROR: Usamos directamente item.category
+            item.category?.let { categoryName ->
                 Text(
                     text = categoryName.uppercase(),
                     fontSize = 12.sp,
@@ -221,18 +213,19 @@ fun AlbumCard(
 
         Spacer(Modifier.height(8.dp))
 
-        // --- C) CONTENIDO (USANDO LA VARIABLE RESCATADA) ---
+        // --- C) CONTENIDO ---
         if (isNews) {
             // -- ES NOTICIA --
             Column(
                 modifier = Modifier
-                    .weight(1f) // Ocupa el espacio restante
+                    .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
                     .verticalScroll(rememberScrollState())
             ) {
+                // AQUÍ ESTABA EL OTRO ERROR: Usamos directamente item.content
                 Text(
-                    text = realContent ?: "", // Pintamos el texto rescatado
+                    text = item.content ?: "",
                     fontSize = 16.sp,
                     lineHeight = 22.sp,
                     fontWeight = FontWeight.Normal,
@@ -240,6 +233,15 @@ fun AlbumCard(
                     textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
                 )
+
+                // OPCIONAL: Si quieres mostrar la fecha (que ahora viene en artist) al final del texto:
+                /*
+                item.artist?.let { date ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = date, fontSize = 12.sp, color = Color.Gray)
+                }
+                */
+
                 Spacer(Modifier.height(16.dp))
             }
         } else {
