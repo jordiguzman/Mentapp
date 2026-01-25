@@ -164,4 +164,16 @@ class HomeViewModel(
 
     val isExpansionFinished: StateFlow<Boolean> = savedStateHandle.getStateFlow(EXPANSION_FINISHED_KEY, false)
     fun updateIsExpansionFinished(isFinished: Boolean) { savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished }
+    // --- LÓGICA DEL MINI DIAL (WEB) ---
+
+    // 1. Interruptor: ¿Está desplegado el menú satélite?
+    private val _isWebMenuOpen = MutableStateFlow(false)
+    val isWebMenuOpen: StateFlow<Boolean> = _isWebMenuOpen.asStateFlow()
+    fun setWebMenuOpen(isOpen: Boolean) { _isWebMenuOpen.value = isOpen }
+
+    // 2. Física Independiente: El ángulo de rotación del Mini Dial
+    // (Necesita su propia variable porque el Dial Grande estará quieto)
+    private val _webMenuRotationAngle = MutableStateFlow(0f)
+    val webMenuRotationAngle: StateFlow<Float> = _webMenuRotationAngle.asStateFlow()
+    fun updateWebMenuRotationAngle(angle: Float) { _webMenuRotationAngle.value = angle }
 }

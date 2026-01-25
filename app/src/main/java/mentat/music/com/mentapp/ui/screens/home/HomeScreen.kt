@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -132,9 +133,15 @@ fun HomeScreen(
     val isExpansionFinished by homeViewModel.isExpansionFinished.collectAsState()
     val newsPosts by homeViewModel.newsPosts.collectAsState()
 
+    // --- ESTADOS MINI DIAL ---
+    val isWebMenuOpen by homeViewModel.isWebMenuOpen.collectAsState()
+    val webMenuRotationAngle by homeViewModel.webMenuRotationAngle.collectAsState()
+    val webMenuRotationAnim = remember { Animatable(0f) }
+
     // VARIABLE PARA EFECTO FLIP (Moneda 3D)
     val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
     val dialBlur = remember { Animatable(0f) }
+
     // ESTADO PARA EL DIAL (True = Info, False = Audio)
     var isMainDial by remember { mutableStateOf(true) }
 
@@ -145,12 +152,16 @@ fun HomeScreen(
     val dialScale = remember { Animatable(1.0f) }
     val vibrator = rememberVibrator()
 
-    // --- CORRECCIÓN CRÍTICA: LÓGICA DE SNAP PARA 6 ICONOS ---
-    // Antes era / 7, ahora es / 6. Esto alinea la física con los gráficos.
+    // --- SNAP PARA 6 ICONOS (DIAL GRANDE) ---
     val angleStep = (2 * Math.PI.toFloat() / 6)
-    val targetAngleRad = (Math.PI.toFloat() / 2.0f) // 90 grados (Norte)
+    val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 
-    // --- REBOTE ---
+    // --- Sincronizar Mini Dial ---
+    LaunchedEffect(webMenuRotationAngle) {
+        webMenuRotationAnim.snapTo(webMenuRotationAngle)
+    }
+
+    // --- REBOTE INICIAL ---
     val bounceSpec = spring<Float>(
         dampingRatio = 0.5f,
         stiffness = 150f
@@ -236,7 +247,6 @@ fun HomeScreen(
         Toast.makeText(context, context.getString(R.string.msg_coming_soon), Toast.LENGTH_SHORT).show()
     }
 
-    // Función para activar la animación de expansión (Carrusel)
     fun activateExpansion(index: Int) {
         scope.launch {
             vibrator.vibrateClick()
@@ -248,40 +258,38 @@ fun HomeScreen(
     }
 
     // =====================================================================
-    // DEFINICIÓN DE LOS DIALES (AQUÍ ESTÁ LA MAGIA)
+    // DEFINICIÓN DE LOS DIALES
     // =====================================================================
 
-    // DIAL 1: REDES Y WEB (Principal)
+    // DIAL 1: REDES Y WEB (6 ÍTEMS)
     val itemsDial1 = remember {
         listOf(
             DialItem("Bluesky", "Bluesky", R.drawable.ic_menu_social, Color(0xFF0085FF)) {
                 launchUrl(MentatConstants.URL_BLUESKY)
             },
             DialItem("YouTube", "YouTube", R.drawable.ic_menu_youtube, Color(0xFFFF0000)) {
-                // CAMBIO FUTURO: Aquí abriremos el carrusel de YouTube
                 launchUrl(MentatConstants.URL_YOUTUBE_CHANNEL)
             },
             DialItem("Spotify", "Spotify", R.drawable.ic_menu_streams, Color(0xFF1DB954)) {
-                // CAMBIO FUTURO: Aquí abriremos el carrusel de Spotify
                 launchUrl(MentatConstants.URL_SPOTIFY_ARTIST)
             },
             DialItem("Bandcamp", "Bandcamp", R.drawable.ic_menu_bandcamp, Color(0xFF629AA9)) {
-                // CAMBIO FUTURO: Aquí abriremos el carrusel de Bandcamp
                 launchUrl(MentatConstants.URL_BANDCAMP_LATEST)
             },
             DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
-                // MOVIDO DESDE EL DIAL 2
                 launchUrl(MentatConstants.URL_SOUNDCLOUD_LATEST)
             },
-            // --- EL NUEVO BOTÓN MAESTRO ---
+            // BOTÓN MAESTRO MINI DIAL
             DialItem("Web", "Mundo Web", R.drawable.ic_web_foreground, Color(0xFF000000)) {
-                Log.d("Dial", "AQUI SE ABRIRÁ EL MINI DIAL")
-                // activateWebMenu() -> Esto lo programaremos luego
+                scope.launch {
+                    homeViewModel.setWebMenuOpen(true)
+                    vibrator.vibrateClick()
+                }
             }
         )
     }
 
-    // DIAL 2: CONTENIDO INTERNO (Pro)
+    // DIAL 2: CONTENIDO INTERNO (6 ÍTEMS)
     val itemsDial2 = remember {
         listOf(
             DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) {
@@ -306,7 +314,7 @@ fun HomeScreen(
         )
     }
 
-    // DIAL 3: MINI DIAL WEB (Satélites)
+    // DIAL 3: MINI DIAL WEB (3 ÍTEMS)
     val itemsWebMenu = remember {
         listOf(
             DialItem("Audio", "Tutoriales", Icons.Default.Call, Color(0xFF000000)) {
@@ -321,41 +329,36 @@ fun HomeScreen(
         )
     }
 
-    // Seleccionamos la lista activa
     val currentItems = if (isMainDial) itemsDial1 else itemsDial2
 
-    // --- BACK HANDLER (Física en 2 Pasos: Hundimiento + Rebote) ---
+    // --- BACK HANDLER ---
+    // BackHandler 1: Para cuando estamos en la animación de salida
     BackHandler(enabled = isAnimatingOut || isExpansionFinished) {
         scope.launch {
             homeViewModel.updateIsExpansionFinished(false)
             homeViewModel.updateIsAnimatingOut(false)
 
-            // Sincronización (-150ms)
             val impactTime = (TRANSITION_DURATION - 150).coerceAtLeast(0)
             delay(impactTime.toLong())
 
-            // --- FASE 1: EL IMPACTO (Hundimiento) ---
             dialScale.animateTo(
                 targetValue = 0.92f,
-                animationSpec = tween(
-                    durationMillis = 120,
-                    easing = FastOutLinearInEasing
-                )
+                animationSpec = tween(120, easing = FastOutLinearInEasing)
             )
 
-            // --- FASE 2: LA RECUPERACIÓN ---
             dialScale.animateTo(
                 targetValue = 1.0f,
-                animationSpec = spring(
-                    dampingRatio = 0.35f,
-                    stiffness = Spring.StiffnessVeryLow
-                )
+                animationSpec = spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessVeryLow)
             )
 
-            // Limpieza final
             homeViewModel.updateClickedIconIndex(-1)
             rotationAngle.snapTo(homeViewModel.rotationAngle.value)
         }
+    }
+
+    // BackHandler 2: Para cerrar el Mini Dial sin salir de la app
+    BackHandler(enabled = isWebMenuOpen) {
+        homeViewModel.setWebMenuOpen(false)
     }
 
     Box(
@@ -380,13 +383,14 @@ fun HomeScreen(
         ) {
             val isPortrait = maxWidth < maxHeight
 
-            // --- CAPA DIAL ---
+            // --- CAPA DIAL PRINCIPAL ---
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .alpha(dialSceneAlpha)
                     .pointerInput(clickedIconIndex) {
-                        if (isAnimatingOut || isExpansionFinished) return@pointerInput
+                        // SI EL MINI DIAL ESTÁ ABIERTO, ESTE DIAL NO GIRA
+                        if (isAnimatingOut || isExpansionFinished || isWebMenuOpen) return@pointerInput
                         var centerX = 0f
                         var centerY = 0f
                         detectDragGestures(
@@ -402,8 +406,6 @@ fun HomeScreen(
                                 scope.launch { rotationAngle.snapTo(rotationAngle.value + (endAngle - startAngle)) }
                             },
                             onDragEnd = {
-                                // LÓGICA DE SNAP (MAGNÉTICA)
-                                // Ahora usa angleStep calculado con 6 items, por lo que parará EXACTAMENTE encima de un icono.
                                 val currentOffset = rotationAngle.value - targetAngleRad
                                 val nearestIconIndex = -(currentOffset / angleStep).roundToInt()
                                 val targetSnapAngle = targetAngleRad - (angleStep * nearestIconIndex)
@@ -416,7 +418,7 @@ fun HomeScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // TÍTULO MENTAPP
+                // TÍTULO
                 Text(
                     text = stringResource(R.string.dial_title),
                     color = Color.White.copy(alpha = 0.5f),
@@ -428,7 +430,7 @@ fun HomeScreen(
                         .padding(32.dp)
                 )
 
-                // BOTONES ESQUINA SUPERIOR DERECHA
+                // BOTONES SUPERIORES
                 Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
                         .clickable {
@@ -448,7 +450,7 @@ fun HomeScreen(
                     Text(text = buttonText, color = Color.White.copy(alpha = 0.6f), fontSize = 20.sp, fontFamily = verdanaFontFamily, fontWeight = FontWeight.Bold)
                 }
 
-                // CONTENEDOR DEL DIAL Y EL BOTÓN CENTRAL
+                // CONTENEDOR GRÁFICO DEL DIAL
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -457,7 +459,6 @@ fun HomeScreen(
                         .graphicsLayer {
                             scaleX = dialScale.value * dialFlipX.value
                             scaleY = dialScale.value
-
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -496,32 +497,189 @@ fun HomeScreen(
                         isExpansionFinished = isExpansionFinished
                     )
 
-                    // 4. BOTÓN CENTRAL (Play/Switch)
+                    // =========================================================
+                    // --- CAPA 2: OSCURIDAD Y MINI DIAL (WEB) ---
+                    // =========================================================
+
+                    // A) EL FONDO OSCURO (DIMMER)
+                    val dimmerAlpha by animateFloatAsState(
+                        targetValue = if (isWebMenuOpen) 0.6f else 0f,
+                        animationSpec = tween(300)
+                    )
+
+                    if (isWebMenuOpen || dimmerAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = dimmerAlpha))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    homeViewModel.setWebMenuOpen(false)
+                                }
+                        )
+                    }
+
+                    // B) EL MINI DIAL (SATÉLITES)
+                    val miniDialScale by animateFloatAsState(
+                        targetValue = if (isWebMenuOpen) 1f else 0f,
+                        animationSpec = spring(dampingRatio = 0.6f, stiffness = 200f)
+                    )
+
+                    val miniRadius = 95.dp
+                    val miniThickness = 55.dp
+                    val miniRadiusPx = with(LocalDensity.current) { miniRadius.toPx() }
+                    val miniThicknessPx = with(LocalDensity.current) { miniThickness.toPx() }
+
+                    if (isWebMenuOpen || miniDialScale > 0.1f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset(y = 140.dp)
+                                .scale(miniDialScale),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // 1. EL FONDO DE CRISTAL
+                            Canvas(modifier = Modifier.size((miniRadius * 2) + miniThickness)) {
+                                val gradientColors = listOf(
+                                    Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.2f),
+                                    Color.Gray.copy(alpha = 0.5f), Color.White.copy(alpha = 0.2f),
+                                    Color.White.copy(alpha = 0.95f)
+                                )
+                                val brush = Brush.sweepGradient(colors = gradientColors, center = this.center)
+                                drawCircle(brush = brush, radius = miniRadiusPx, style = Stroke(width = miniThicknessPx))
+                                drawCircle(color = Color.White.copy(alpha = 0.6f), radius = miniRadiusPx - (miniThicknessPx / 2), style = Stroke(width = 1.dp.toPx()))
+                                drawCircle(color = Color.White.copy(alpha = 0.3f), radius = miniRadiusPx + (miniThicknessPx / 2), style = Stroke(width = 1.dp.toPx()))
+                            }
+
+                            // 2. LOS ICONOS Y EL GESTO (EFECTO MIEL / HONEY) 🍯
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(Unit) {
+                                        val stepRad = (2 * Math.PI / 3).toFloat()
+                                        val targetBase = (Math.PI / 2).toFloat()
+
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                scope.launch { webMenuRotationAnim.stop() }
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                // AJUSTE 1: SENSIBILIDAD (PESO)
+                                                // Bajamos de 2.5f a 1.5f.
+                                                // Ahora la rueda "pesa" más al arrastrarla.
+                                                val rotationChange = (dragAmount.x / 100) * 1f
+
+                                                scope.launch {
+                                                    webMenuRotationAnim.snapTo(webMenuRotationAnim.value + rotationChange)
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                val currentRot = webMenuRotationAnim.value
+                                                val relativeRot = currentRot - targetBase
+                                                val steps = (relativeRot / stepRad).roundToInt()
+                                                val targetSnapAngle = (steps * stepRad) + targetBase
+
+                                                // AJUSTE 2: FÍSICA DE FLUIDOS (EL SNAP)
+                                                scope.launch {
+                                                    webMenuRotationAnim.animateTo(
+                                                        targetValue = targetSnapAngle,
+                                                        animationSpec = spring(
+                                                            // Damping 0.85f: Alta viscosidad (menos rebote, más frenada suave)
+                                                            dampingRatio = 0.95f,
+                                                            // Stiffness 60f: Muelle muy blando (movimiento lento y pesado)
+                                                            stiffness = 40f
+                                                        )
+                                                    )
+                                                    homeViewModel.updateWebMenuRotationAngle(targetSnapAngle)
+                                                }
+                                            }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularDialLayout(
+                                    modifier = Modifier.fillMaxSize(),
+                                    items = itemsWebMenu,
+                                    currentRotation = webMenuRotationAnim.value,
+                                    iconPathRadius = miniRadius,
+                                    isAnimatingOut = false,
+                                    clickedIconIndex = -1,
+                                    isExpansionFinished = false
+                                )
+                            }
+
+                            // 3. EL INTERRUPTOR (CON EFECTO RADAR)
+                            val infiniteTransition = rememberInfiniteTransition(label = "radar")
+                            val radarScale by infiniteTransition.animateFloat(
+                                initialValue = 1.0f, targetValue = 1.4f,
+                                animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart), label = "scale"
+                            )
+                            val radarAlpha by infiniteTransition.animateFloat(
+                                initialValue = 0.5f, targetValue = 0.0f,
+                                animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart), label = "alpha"
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        homeViewModel.setWebMenuOpen(false)
+                                        vibrator.vibrateClick()
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = radarAlpha),
+                                        radius = (size.minDimension / 2) * 0.6f * radarScale,
+                                        style = Stroke(width = 2.dp.toPx())
+                                    )
+                                }
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_web_foreground),
+                                    contentDescription = "Cerrar",
+                                    colorFilter = ColorFilter.tint(Color.Black),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                    }
+                    // 4. BOTÓN CENTRAL Y SU ESCUDO
                     if (!isAnimatingOut && !isExpansionFinished) {
+                        // A) EL BOTÓN VISUAL (Siempre está ahí)
                         SolarisPlayButton(
                             size = 80.dp,
                             onClick = {
+                                // Lógica pura de Flip
                                 scope.launch {
-                                    // FASE 1
+                                    // FASE 1: ACELERAR
                                     launch {
                                         dialFlipX.animateTo(
                                             targetValue = 0.0f,
-                                            animationSpec = tween(250, easing = FastOutLinearInEasing)
+                                            animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing)
                                         )
                                     }
                                     launch {
                                         dialBlur.animateTo(
                                             targetValue = 10f,
-                                            animationSpec = tween(250, easing = LinearEasing)
+                                            animationSpec = tween(durationMillis = 250, easing = LinearEasing)
                                         )
                                     }
+
                                     delay(250)
 
-                                    // FASE 2
+                                    // FASE 2: CAMBIO
                                     isMainDial = !isMainDial
                                     vibrator.vibrateClick()
 
-                                    // FASE 3
+                                    // FASE 3: FRENAR Y RECUPERAR
                                     launch {
                                         dialFlipX.animateTo(
                                             targetValue = 1.0f,
@@ -531,9 +689,11 @@ fun HomeScreen(
                                     launch {
                                         dialBlur.animateTo(
                                             targetValue = 0f,
-                                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
                                         )
                                     }
+
+                                    // REBOTE FINAL
                                     launch {
                                         dialScale.snapTo(1.15f)
                                         dialScale.animateTo(1.0f, animationSpec = bounceSpec)
@@ -541,11 +701,28 @@ fun HomeScreen(
                                 }
                             }
                         )
+
+                        // B) EL ESCUDO ANTIMAGIA (Solo si el Mini Dial está abierto) 🛡️
+                        // Se dibuja ENCIMA del botón y absorbe todos los toques sin hacer visuales.
+                        if (isWebMenuOpen) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp) // Mismo tamaño que el botón
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null, // NULL = SIN EFECTO VISUAL
+                                        onClick = {
+                                            // Clic absorbido: El botón de abajo no se entera.
+                                        }
+                                    )
+                            )
+                        }
                     }
                 }
             }
 
-            // --- CAPA CARRUSEL ---
+            // --- CAPA CARRUSEL (RESULTADOS) ---
             val appData: AppData? = remember(appState) {
                 when (val state = appState) {
                     is AppState.Success -> state.data
@@ -571,8 +748,6 @@ fun HomeScreen(
                             item.copy(imageUrl = "https://img.youtube.com/vi/${item.imageUrl}/0.jpg")
                         }
                     }
-
-                    // BLOQUES QUE USAN NOTICIAS (ROOM)
                     "Audio", "Divulgacion", "Blog" -> {
                         conceptDataAsCarousel = newsPosts.map { entity ->
                             val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString()
