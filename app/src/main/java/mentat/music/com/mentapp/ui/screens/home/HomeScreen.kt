@@ -145,9 +145,10 @@ fun HomeScreen(
     val dialScale = remember { Animatable(1.0f) }
     val vibrator = rememberVibrator()
 
-    // CONSTANTES DE ANIMACIÓN (Traídas de tu código original)
-    val angleStep = (2 * Math.PI.toFloat() / 7) // Asumimos 7 items por dial
-    val targetAngleRad = (Math.PI.toFloat() / 2.0f)
+    // --- CORRECCIÓN CRÍTICA: LÓGICA DE SNAP PARA 6 ICONOS ---
+    // Antes era / 7, ahora es / 6. Esto alinea la física con los gráficos.
+    val angleStep = (2 * Math.PI.toFloat() / 6)
+    val targetAngleRad = (Math.PI.toFloat() / 2.0f) // 90 grados (Norte)
 
     // --- REBOTE ---
     val bounceSpec = spring<Float>(
@@ -250,43 +251,39 @@ fun HomeScreen(
     // DEFINICIÓN DE LOS DIALES (AQUÍ ESTÁ LA MAGIA)
     // =====================================================================
 
-    // DIAL 1: INFO (Principal)
+    // DIAL 1: REDES Y WEB (Principal)
     val itemsDial1 = remember {
         listOf(
             DialItem("Bluesky", "Bluesky", R.drawable.ic_menu_social, Color(0xFF0085FF)) {
                 launchUrl(MentatConstants.URL_BLUESKY)
             },
             DialItem("YouTube", "YouTube", R.drawable.ic_menu_youtube, Color(0xFFFF0000)) {
+                // CAMBIO FUTURO: Aquí abriremos el carrusel de YouTube
                 launchUrl(MentatConstants.URL_YOUTUBE_CHANNEL)
             },
             DialItem("Spotify", "Spotify", R.drawable.ic_menu_streams, Color(0xFF1DB954)) {
+                // CAMBIO FUTURO: Aquí abriremos el carrusel de Spotify
                 launchUrl(MentatConstants.URL_SPOTIFY_ARTIST)
             },
             DialItem("Bandcamp", "Bandcamp", R.drawable.ic_menu_bandcamp, Color(0xFF629AA9)) {
+                // CAMBIO FUTURO: Aquí abriremos el carrusel de Bandcamp
                 launchUrl(MentatConstants.URL_BANDCAMP_LATEST)
             },
-            // NUEVOS (Iconos del Sistema) -> Usan lógica de carrusel (Filtro Audio)
-            DialItem("Audio", "Tutoriales", Icons.Default.Call, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Audio")
-                activateExpansion(4) // Índice manual en la lista
+            DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
+                // MOVIDO DESDE EL DIAL 2
+                launchUrl(MentatConstants.URL_SOUNDCLOUD_LATEST)
             },
-            DialItem("Divulgacion", "Ciencia", Icons.Default.Star, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Divulgacion")
-                activateExpansion(5)
-            },
-            DialItem("Blog", "Blog", Icons.Default.Create, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Blog")
-                activateExpansion(6)
+            // --- EL NUEVO BOTÓN MAESTRO ---
+            DialItem("Web", "Mundo Web", R.drawable.ic_web_foreground, Color(0xFF000000)) {
+                Log.d("Dial", "AQUI SE ABRIRÁ EL MINI DIAL")
+                // activateWebMenu() -> Esto lo programaremos luego
             }
         )
     }
 
-    // DIAL 2: AUDIO (Pro)
+    // DIAL 2: CONTENIDO INTERNO (Pro)
     val itemsDial2 = remember {
         listOf(
-            DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
-                launchUrl(MentatConstants.URL_SOUNDCLOUD_LATEST)
-            },
             DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) {
                 homeViewModel.filterByCategory("GUZZ")
                 activateExpansion(1)
@@ -309,6 +306,21 @@ fun HomeScreen(
         )
     }
 
+    // DIAL 3: MINI DIAL WEB (Satélites)
+    val itemsWebMenu = remember {
+        listOf(
+            DialItem("Audio", "Tutoriales", Icons.Default.Call, Color(0xFF000000)) {
+                homeViewModel.filterByCategory("Audio")
+            },
+            DialItem("Divulgacion", "Ciencia", Icons.Default.Star, Color(0xFF000000)) {
+                homeViewModel.filterByCategory("Divulgacion")
+            },
+            DialItem("Blog", "Blog", Icons.Default.Create, Color(0xFF000000)) {
+                homeViewModel.filterByCategory("Blog")
+            }
+        )
+    }
+
     // Seleccionamos la lista activa
     val currentItems = if (isMainDial) itemsDial1 else itemsDial2
 
@@ -319,27 +331,24 @@ fun HomeScreen(
             homeViewModel.updateIsAnimatingOut(false)
 
             // Sincronización (-150ms)
-            // Esto hace que la animación empiece justo antes de que llegue el icono,
-            // perfecto para que se vea el hundimiento mientras aterriza.
             val impactTime = (TRANSITION_DURATION - 150).coerceAtLeast(0)
             delay(impactTime.toLong())
 
             // --- FASE 1: EL IMPACTO (Hundimiento) ---
-            // Antes usábamos snapTo (instantáneo). Ahora animamos la bajada.
             dialScale.animateTo(
                 targetValue = 0.92f,
                 animationSpec = tween(
-                    durationMillis = 120, // Tarda un poco en hundirse (puedes subirlo a 150 si quieres más drama)
-                    easing = FastOutLinearInEasing // Empieza rápido, frena de golpe al chocar
+                    durationMillis = 120,
+                    easing = FastOutLinearInEasing
                 )
             )
 
-            // --- FASE 2: LA RECUPERACIÓN (La que te gusta) ---
+            // --- FASE 2: LA RECUPERACIÓN ---
             dialScale.animateTo(
                 targetValue = 1.0f,
                 animationSpec = spring(
-                    dampingRatio = 0.35f, // Gomoso
-                    stiffness = Spring.StiffnessVeryLow // Lento y majestuoso
+                    dampingRatio = 0.35f,
+                    stiffness = Spring.StiffnessVeryLow
                 )
             )
 
@@ -393,6 +402,8 @@ fun HomeScreen(
                                 scope.launch { rotationAngle.snapTo(rotationAngle.value + (endAngle - startAngle)) }
                             },
                             onDragEnd = {
+                                // LÓGICA DE SNAP (MAGNÉTICA)
+                                // Ahora usa angleStep calculado con 6 items, por lo que parará EXACTAMENTE encima de un icono.
                                 val currentOffset = rotationAngle.value - targetAngleRad
                                 val nearestIconIndex = -(currentOffset / angleStep).roundToInt()
                                 val targetSnapAngle = targetAngleRad - (angleStep * nearestIconIndex)
@@ -417,7 +428,7 @@ fun HomeScreen(
                         .padding(32.dp)
                 )
 
-                // BOTONES ESQUINA SUPERIOR DERECHA (Power & Idioma)
+                // BOTONES ESQUINA SUPERIOR DERECHA
                 Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
                         .clickable {
@@ -444,17 +455,13 @@ fun HomeScreen(
                         .scale(dialScale.value)
                         .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
                         .graphicsLayer {
-                            // AQUÍ ESTÁ EL TRUCO VISUAL:
-                            // Multiplicamos la escala X por nuestra variable de "giro de moneda"
-                            // Esto lo pusiste tú y ESTÁ PERFECTO
                             scaleX = dialScale.value * dialFlipX.value
-
                             scaleY = dialScale.value
-                            rotationZ = rotationAngle.value
+
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    // 1. Círculos de fondo (Canvas)
+                    // 1. Círculos de fondo
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val gradientColors = listOf(
                             Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.4f),
@@ -478,7 +485,7 @@ fun HomeScreen(
                         Image(painter = painterResource(id = R.drawable.outline_line_end_arrow_notch_24), contentDescription = null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
                     }
 
-                    // 3. LA RUEDA (CircularDialLayout) -> Versión Híbrida
+                    // 3. LA RUEDA (CircularDialLayout)
                     CircularDialLayout(
                         modifier = Modifier.fillMaxSize(),
                         items = currentItems,
@@ -489,60 +496,44 @@ fun HomeScreen(
                         isExpansionFinished = isExpansionFinished
                     )
 
-                    // 4. BOTÓN CENTRAL (Versión FINAL: Blur Progresivo 0 -> MAX -> 0)
+                    // 4. BOTÓN CENTRAL (Play/Switch)
                     if (!isAnimatingOut && !isExpansionFinished) {
                         SolarisPlayButton(
                             size = 80.dp,
                             onClick = {
                                 scope.launch {
-                                    // --- FASE 1: ACELERACIÓN (De 0 a Mitad) ---
-                                    // Todo ocurre en 250ms
-
-                                    // A) La moneda se cierra
+                                    // FASE 1
                                     launch {
                                         dialFlipX.animateTo(
                                             targetValue = 0.0f,
                                             animationSpec = tween(250, easing = FastOutLinearInEasing)
                                         )
                                     }
-
-                                    // B) El Blur SUBE progresivamente de 0 a 10
-                                    // Usamos LinearEasing para que la subida sea constante y se note la velocidad
                                     launch {
                                         dialBlur.animateTo(
-                                            targetValue = 10f, // Máximo blur justo en el medio
+                                            targetValue = 10f,
                                             animationSpec = tween(250, easing = LinearEasing)
                                         )
                                     }
-
-                                    // Esperamos a que termine la Fase 1
                                     delay(250)
 
-                                    // --- FASE 2: EL PICO (Cambio de datos) ---
-                                    // Aquí estamos en el "ojo del huracán": Blur al máximo, moneda invisible
+                                    // FASE 2
                                     isMainDial = !isMainDial
                                     vibrator.vibrateClick()
 
-                                    // --- FASE 3: FRENADA (De Mitad a Final) ---
-
-                                    // A) La moneda se abre
+                                    // FASE 3
                                     launch {
                                         dialFlipX.animateTo(
                                             targetValue = 1.0f,
                                             animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)
                                         )
                                     }
-
-                                    // B) El Blur BAJA progresivamente de 10 a 0
-                                    // Desaparece a medida que la moneda recupera su forma
                                     launch {
                                         dialBlur.animateTo(
-                                            targetValue = 0f, // Vuelve a estar nítido
+                                            targetValue = 0f,
                                             animationSpec = tween(300, easing = FastOutSlowInEasing)
                                         )
                                     }
-
-                                    // C) Golpe de peso (Bounce)
                                     launch {
                                         dialScale.snapTo(1.15f)
                                         dialScale.animateTo(1.0f, animationSpec = bounceSpec)
@@ -554,7 +545,7 @@ fun HomeScreen(
                 }
             }
 
-            // --- CAPA CARRUSEL (Lógica actualizada) ---
+            // --- CAPA CARRUSEL ---
             val appData: AppData? = remember(appState) {
                 when (val state = appState) {
                     is AppState.Success -> state.data
