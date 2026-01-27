@@ -175,4 +175,8 @@ class HomeViewModel(
     private val _webMenuRotationAngle = MutableStateFlow(0f)
     val webMenuRotationAngle: StateFlow<Float> = _webMenuRotationAngle.asStateFlow()
     fun updateWebMenuRotationAngle(angle: Float) { _webMenuRotationAngle.value = angle }
+    // NUEVA VARIABLE: Guarda qué botón del Mini Dial pulsaste (Audio, Divulgacion, Blog)
+    private val _selectedWebCategory = MutableStateFlow<String?>(null)
+    val selectedWebCategory: StateFlow<String?> = _selectedWebCategory.asStateFlow()
+    fun setSelectedWebCategory(category: String?) { _selectedWebCategory.value = category }
 }
