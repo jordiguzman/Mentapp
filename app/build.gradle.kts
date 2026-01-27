@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.compose.animation.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -93,6 +94,8 @@ dependencies {
     // El procesador. Si en tu configuración copiada usas 'kapt', pon 'kapt'.
     // Si usas 'ksp', pon 'ksp'. Ante la duda, mira cómo tienes puesto Room arriba.
     kapt(libs.tikxml.processor)
+
+
 
 
 }

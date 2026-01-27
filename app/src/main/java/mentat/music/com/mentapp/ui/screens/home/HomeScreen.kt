@@ -280,7 +280,7 @@ fun HomeScreen(
                 launchUrl(MentatConstants.URL_SOUNDCLOUD_LATEST)
             },
             // BOTÓN MAESTRO MINI DIAL
-            DialItem("Web", "Mundo Web", R.drawable.ic_web_foreground, Color(0xFF000000)) {
+            DialItem("Web", "Mundo Web", R.drawable.ic_web_foreground, Color(0xFF893471)) {
                 scope.launch {
                     homeViewModel.setWebMenuOpen(true)
                     vibrator.vibrateClick()

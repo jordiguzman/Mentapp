@@ -1,14 +1,21 @@
 package mentat.music.com.mentapp.ui.composables
 
 import android.os.Build
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
@@ -46,18 +54,41 @@ private const val DIAL_TRANSITION_DURATION = 300
 @Composable
 fun CircularDialLayout(
     modifier: Modifier = Modifier,
-    items: List<DialItem>, // <--- AHORA RECIBIMOS LA LISTA DESDE FUERA
+    items: List<DialItem>,
     currentRotation: Float,
     iconPathRadius: Dp,
     isAnimatingOut: Boolean,
     clickedIconIndex: Int,
     isExpansionFinished: Boolean,
-    // Eliminamos onIconClick global porque cada item trae su onClick
-    // contentFor ahora es más simple, solo para pintar el icono principal
 ) {
     val radiusPx = with(LocalDensity.current) { iconPathRadius.toPx() }
 
-    // Calculamos el paso del ángulo según cuantos items nos pasen
+    // --- 1. EL MOTOR DEL LATIDO (Propio del Dial) ---
+    // Lo definimos aquí para que funcione autónomamente.
+    // Todos los iconos usarán este mismo ritmo cuando les toque estar activos.
+    val infiniteTransition = rememberInfiniteTransition(label = "dial_pulse")
+
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.6f, // Crece hasta un 40% más
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing), // Un poco más rápido que el radar
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseScale"
+    )
+
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f, // Opacidad inicial
+        targetValue = 0.3f,  // Se desvanece
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseAlpha"
+    )
+
+    // Calculamos el paso del ángulo
     val angleStep = if (items.isNotEmpty()) (2 * Math.PI.toFloat() / items.size) else 0f
     val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 
@@ -66,32 +97,33 @@ fun CircularDialLayout(
         content = {
             items.forEachIndexed { index, item ->
 
-                // --- LÓGICA DE PINTOR (HÍBRIDO) ---
-                // Aquí decidimos qué herramienta usar para dibujar
+                // --- LÓGICA DE PINTOR ---
                 val painter: Painter = when (item.icon) {
-                    is Int -> painterResource(id = item.icon)           // Es un PNG/XML antiguo
-                    is ImageVector -> rememberVectorPainter(item.icon)  // Es un Vector nuevo
-                    else -> painterResource(id = android.R.drawable.ic_menu_help) // Fallback por seguridad
+                    is Int -> painterResource(id = item.icon)
+                    is ImageVector -> rememberVectorPainter(item.icon)
+                    else -> painterResource(id = android.R.drawable.ic_menu_help)
                 }
 
-                // --- LÓGICA DE ÁNGULO Y ESTADO ---
+                // --- CÁLCULO DE ÁNGULO Y FOCO ---
                 val angle = (angleStep * index) + currentRotation
                 val normalizedAngle = (angle % (2 * Math.PI.toFloat()) + 2 * Math.PI.toFloat()) % (2 * Math.PI.toFloat())
                 val targetAngleNorm = (targetAngleRad % (2 * Math.PI.toFloat()) + 2 * Math.PI.toFloat()) % (2 * Math.PI.toFloat())
                 val diff = abs(normalizedAngle - targetAngleNorm)
+
+                // ¿Está este ítem en la posición principal (arriba/derecha)?
                 val isActive = (diff < 0.05f || abs(diff - 2 * Math.PI.toFloat()) < 0.05f)
                 val isClickedIcon = (index == clickedIconIndex)
 
-                // --- TAMAÑOS ---
+                // --- ANIMACIÓN DE TAMAÑO ---
                 val targetIconSize = when {
                     isAnimatingOut && isClickedIcon -> 1000.dp
                     isAnimatingOut && !isClickedIcon -> 48.dp
-                    isActive -> 64.dp
+                    isActive -> 64.dp // Cuando está activo es más grande
                     else -> 48.dp
                 }
                 val animatedIconSize by animateDpAsState(
                     targetValue = targetIconSize,
-                    animationSpec = tween(durationMillis = DIAL_TRANSITION_DURATION),
+                    animationSpec = tween(durationMillis = 300),
                     label = "iconSize"
                 )
 
@@ -106,54 +138,63 @@ fun CircularDialLayout(
                 }
                 val containerAnimatedAlpha by animateFloatAsState(
                     targetValue = containerTargetAlpha,
-                    animationSpec = tween(durationMillis = DIAL_TRANSITION_DURATION),
+                    animationSpec = tween(durationMillis = 300),
                     label = "alpha"
                 )
 
-                // --- CAJA PRINCIPAL ---
+                // --- CONTENEDOR PRINCIPAL ---
                 Box(
                     modifier = Modifier
                         .alpha(containerAnimatedAlpha)
                         .size(containerSize)
+                        // IMPORTANTE: Si recortamos con clip(CircleShape) aquí,
+                        // el halo se cortará si es más grande que containerSize.
+                        // Como containerSize tiene "extraSpaceForShadow", debería caber bien.
+                        .clip(CircleShape)
                         .then(if (isActive && !isAnimatingOut) Modifier.clickable {
-                            item.onClick() // <--- Ejecutamos el click del item
+                            item.onClick()
                         } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
 
-                    // --- SOMBRA (Ahora usa el 'painter' híbrido) ---
+                    // 2. --- EL HALO DE COLOR (NUEVO) --- 🔴🟢🔵
+                    // Solo se dibuja si el ítem está ACTIVO (en foco)
+                    if (isActive && !isAnimatingOut) {
+                        Box(
+                            modifier = Modifier
+                                .size(animatedIconSize) // Base del tamaño del icono
+                                .scale(pulseScale)      // Crece y decrece
+                                .background(
+                                    // Usamos el color del ítem con la transparencia animada
+                                    color = item.color.copy(alpha = pulseAlpha),
+                                    shape = CircleShape
+                                )
+                        )
+                    }
+
+                    // 3. --- SOMBRA ---
                     if (!isAnimatingOut) {
                         Icon(
-                            painter = painter, // Usamos el pintor calculado arriba
+                            painter = painter,
                             contentDescription = null,
                             tint = Color.Black.copy(alpha = 0.5f),
                             modifier = Modifier
                                 .size(animatedIconSize)
                                 .scale(shadowScale)
                                 .offset(x = 6.dp, y = 6.dp)
-                                .then(
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(4.dp)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
+                                .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(4.dp) else Modifier)
                         )
                     }
 
-                    // --- ICONO REAL ---
+                    // 4. --- ICONO ---
                     Box(modifier = Modifier.size(animatedIconSize)) {
-                        // Pintamos el icono normal (sin tintar, para que tus PNGs conserven color)
-                        // OJO: Si usas vectores del sistema, son negros por defecto.
-                        // Aquí aplicamos un pequeño truco: si es vector, lo pintamos blanco/color.
-                        // Si es PNG, lo dejamos tal cual (tint = Color.Unspecified).
-
+                        // Truco para tintar si es Vector, o dejar original si es PNG
                         val iconTint = if (item.icon is ImageVector) item.color else Color.Unspecified
 
                         Icon(
                             painter = painter,
                             contentDescription = item.label,
-                            tint = iconTint, // Respetamos tus PNGs originales
+                            tint = iconTint,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -161,17 +202,12 @@ fun CircularDialLayout(
             }
         }
     ) { measurables, constraints ->
-        // --- LÓGICA DE LAYOUT (Estándar circular) ---
-        val placables = measurables.map {
-            it.measure(constraints.copy(minWidth = 0, minHeight = 0))
-        }
-
+        // --- LAYOUT (Sin cambios) ---
+        val placables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
         val layoutWidth = constraints.maxWidth
         val layoutHeight = constraints.maxHeight
         val centerX = layoutWidth / 2
         val centerY = layoutHeight / 2
-
-        // Recalculamos el paso aquí también por seguridad
         val currentAngleStep = if (items.isNotEmpty()) (2 * Math.PI.toFloat() / items.size) else 0f
 
         layout(layoutWidth, layoutHeight) {

@@ -1,7 +1,6 @@
 package mentat.music.com.mentapp.ui.screens.home.viewmodel
 
 import android.app.Application
-import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.AndroidViewModel
@@ -13,7 +12,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mentat.music.com.mentapp.data.local.AppDatabase
@@ -22,16 +20,9 @@ import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.data.repository.MediaRepository
 
-// --- CONSTANTES DE UI (AJUSTADAS A 6 ICONOS) ---
-// 1. Dividimos el círculo en 6 partes iguales (60 grados por item)
+// --- CONSTANTES DE UI ---
 private val angleStep = (2 * Math.PI.toFloat() / 6)
-
-// 2. Definimos el ángulo objetivo (Las 6 en punto = Abajo = 90º = PI/2)
 private val targetAngleRad = (Math.PI.toFloat() / 2.0f)
-
-// 3. POSICIÓN INICIAL: BANDCAMP AL CENTRO
-// Bandcamp es el índice 3. Para que esté a las 6 en punto (90º),
-// tenemos que rotar el dial -90º hacia atrás.
 private val BANDCAMP_START_ANGLE = (-Math.PI / 2).toFloat()
 
 private const val ROTATION_KEY = "rotationAngle"
@@ -62,34 +53,25 @@ class HomeViewModel(
 
     fun toggleLanguage() {
         _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        refreshAllData()
+        // No hace falta refreshAllData() porque los flujos ya observan el cambio de idioma
     }
 
-    // --- 3. LÓGICA DE FILTRADO ---
-    private val _selectedCategory = MutableStateFlow("Blog") // Por defecto Blog
+    // --- 3. LÓGICA DE FILTRADO (NOTICIAS) ---
+    private val _selectedCategory = MutableStateFlow("Blog")
 
     fun filterByCategory(category: String) {
         _selectedCategory.value = category
     }
 
+    // AHORA ESCUCHAMOS 3 COSAS: DATOS, CATEGORÍA E IDIOMA
     val newsPosts: StateFlow<List<CarouselItem>> = combine(
         mediaRepository.allMedia,
-        _selectedCategory
-    ) { allItems, category ->
+        _selectedCategory,
+        _currentLanguage // <--- ¡NUEVO!
+    ) { allItems, category, language ->
         allItems
             .filter { it.category.equals(category, ignoreCase = true) }
-            .map { entity ->
-                CarouselItem(
-                    id = entity.id.toString(),
-                    title = entity.title,
-                    imageUrl = entity.imageUrl,
-                    targetUrl = entity.targetUrl,
-                    // Intercambio de campos para visualización correcta de noticias
-                    content = entity.content,
-                    artist = entity.artist,
-                    appPackageName = entity.appPackageName
-                )
-            }
+            .map { entity -> mapEntityToItem(entity, language) } // Usamos el mapeador inteligente
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -98,30 +80,31 @@ class HomeViewModel(
 
 
     // --- 4. FLUJO PRINCIPAL (MÚSICA) ---
-    val appState: StateFlow<AppState> = mediaRepository.allMedia
-        .map { mediaList ->
-            if (mediaList.isEmpty()) {
-                AppState.Loading
-            } else {
-                val organizedData = AppData(
-                    GUZZ = filterAndMap(mediaList, "GUZZ"),
-                    Spotify = filterAndMap(mediaList, "Spotify"),
-                    Bandcamp = filterAndMap(mediaList, "Bandcamp"),
-                    Soundcloud = filterAndMap(mediaList, "Soundcloud"),
-                    YouTube = filterAndMap(mediaList, "YouTube"),
-                    Audio = null,
-                    Divulgacion = null,
-                    Blog = null,
-                    Concepto = null
-                )
-                AppState.Success(organizedData)
-            }
+    // AHORA ESCUCHAMOS 2 COSAS: DATOS E IDIOMA
+    val appState: StateFlow<AppState> = combine(
+        mediaRepository.allMedia,
+        _currentLanguage // <--- ¡NUEVO!
+    ) { mediaList, language ->
+        if (mediaList.isEmpty()) {
+            AppState.Loading
+        } else {
+            val organizedData = AppData(
+                GUZZ = filterAndMap(mediaList, "GUZZ", language),
+                Spotify = filterAndMap(mediaList, "Spotify", language),
+                Bandcamp = filterAndMap(mediaList, "Bandcamp", language),
+                Soundcloud = filterAndMap(mediaList, "Soundcloud", language),
+                YouTube = filterAndMap(mediaList, "YouTube", language),
+                Audio = null,
+                Divulgacion = null,
+                Blog = null
+            )
+            AppState.Success(organizedData)
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = AppState.Loading
-        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = AppState.Loading
+    )
 
     init {
         refreshAllData()
@@ -133,26 +116,45 @@ class HomeViewModel(
         }
     }
 
-    // --- HELPERS ---
-    private fun filterAndMap(list: List<MediaEntity>, category: String): List<CarouselItem> {
-        return list.filter { it.category.equals(category, ignoreCase = true) }.map { entity ->
-            CarouselItem(
-                id = entity.id.toString(),
-                title = entity.title,
-                artist = entity.artist,
-                imageUrl = entity.imageUrl,
-                targetUrl = entity.targetUrl,
-                appPackageName = entity.appPackageName
-            )
-        }
+    // --- HELPER MAESTRO: TRADUCTOR ---
+    // Esta función decide qué texto mostrar según el idioma seleccionado
+    private fun mapEntityToItem(entity: MediaEntity, language: Language): CarouselItem {
+        val isEnglish = language == Language.EN
+
+        return CarouselItem(
+            id = entity.id.toString(),
+            imageUrl = entity.imageUrl,
+            appPackageName = entity.appPackageName,
+            category = entity.category,
+            date = entity.artist, // Usamos el campo artist como fecha para noticias si aplica
+
+            // --- LÓGICA DE TRADUCCIÓN ---
+            // Título
+            title = if (isEnglish && !entity.titleEn.isNullOrBlank()) entity.titleEn else entity.title,
+
+            // Contenido (Resumen en noticias)
+            content = if (isEnglish && !entity.contentEn.isNullOrBlank()) entity.contentEn else entity.content,
+
+            // URL de destino (por si tienes links diferentes para inglés)
+            targetUrl = if (isEnglish && !entity.targetUrlEn.isNullOrBlank()) entity.targetUrlEn else entity.targetUrl,
+
+            // Artista (En música suele ser igual, pero si tienes lógica especial, va aquí)
+            artist = entity.artist
+        )
     }
 
-    // --- ESTADO DE UI ---
+    // Helper para filtrar listas de música
+    private fun filterAndMap(list: List<MediaEntity>, category: String, language: Language): List<CarouselItem> {
+        return list
+            .filter { it.category.equals(category, ignoreCase = true) }
+            .map { entity -> mapEntityToItem(entity, language) }
+    }
+
+    // --- ESTADO DE UI (SIN CAMBIOS) ---
     private val _currentPage = mutableIntStateOf(0)
     val currentPage: State<Int> = _currentPage
     fun setCurrentPage(page: Int) { _currentPage.value = page }
 
-    // AQUÍ SE USA LA NUEVA CONSTANTE BANDCAMP_START_ANGLE
     val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
     fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
 
@@ -164,15 +166,12 @@ class HomeViewModel(
 
     val isExpansionFinished: StateFlow<Boolean> = savedStateHandle.getStateFlow(EXPANSION_FINISHED_KEY, false)
     fun updateIsExpansionFinished(isFinished: Boolean) { savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished }
-    // --- LÓGICA DEL MINI DIAL (WEB) ---
 
-    // 1. Interruptor: ¿Está desplegado el menú satélite?
+    // --- LÓGICA DEL MINI DIAL (WEB) ---
     private val _isWebMenuOpen = MutableStateFlow(false)
     val isWebMenuOpen: StateFlow<Boolean> = _isWebMenuOpen.asStateFlow()
     fun setWebMenuOpen(isOpen: Boolean) { _isWebMenuOpen.value = isOpen }
 
-    // 2. Física Independiente: El ángulo de rotación del Mini Dial
-    // (Necesita su propia variable porque el Dial Grande estará quieto)
     private val _webMenuRotationAngle = MutableStateFlow(0f)
     val webMenuRotationAngle: StateFlow<Float> = _webMenuRotationAngle.asStateFlow()
     fun updateWebMenuRotationAngle(angle: Float) { _webMenuRotationAngle.value = angle }

@@ -1,5 +1,6 @@
 [versions]
 agp = "9.0.0"
+gson = "2.10.1"
 kotlin = "2.2.10"
 coreKtx = "1.17.0"
 junit = "4.13.2"
@@ -21,10 +22,12 @@ room = "2.6.1"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
 tikxml = "0.8.13"
+animationCore = "1.10.1"
 
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+gson = { module = "com.google.gson:gson", version.ref = "gson" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -64,6 +67,7 @@ tikxml-core = { module = "com.tickaroo.tikxml:core", version.ref = "tikxml" }
 tikxml-annotation = { module = "com.tickaroo.tikxml:annotation", version.ref = "tikxml" }
 tikxml-converter = { module = "com.tickaroo.tikxml:retrofit-converter", version.ref = "tikxml" }
 tikxml-processor = { module = "com.tickaroo.tikxml:processor", version.ref = "tikxml" }
+androidx-compose-animation-core = { group = "androidx.compose.animation", name = "animation-core", version.ref = "animationCore" }
 
 
 [plugins]
