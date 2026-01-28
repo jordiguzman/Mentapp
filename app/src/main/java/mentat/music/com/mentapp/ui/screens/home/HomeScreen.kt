@@ -287,7 +287,7 @@ fun HomeScreen(
             DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
                 activateExpansion(4)
             },
-            DialItem("Web", "Mundo Web", R.drawable.ic_web_foreground, Color(0xFF893471)) {
+            DialItem("Web", "Mundo Web", R.drawable.ic_logo_mentat, Color(0xFF893471)) {
                 scope.launch {
                     homeViewModel.setWebMenuOpen(true)
                     vibrator.vibrateClick()
