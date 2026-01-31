@@ -144,7 +144,7 @@ fun HomeScreen(
     // AJUSTE DE UX: Inicio rotado -30º (PI/6) para que el ítem 2 (Blog) quede abajo (90º)
     val startAngle = (-Math.PI / 6).toFloat()
     val webMenuRotationAnim = remember {
-        Animatable((Math.PI / 2).toFloat()) // <--- AQUÍ ESTÁ LA CLAVE
+        Animatable(0f) // <--- AQUÍ ESTÁ LA CLAVE
     }
 
     // VARIABLE PARA EFECTO FLIP (Moneda 3D)
@@ -627,7 +627,7 @@ fun HomeScreen(
                                         .fillMaxSize()
                                         .pointerInput(Unit) {
                                             val stepRad = (2 * Math.PI / 3).toFloat()
-                                            val targetBase = (Math.PI / 2).toFloat()
+                                            val targetBase = 0f
 
                                             detectDragGestures(
                                                 onDragStart = {

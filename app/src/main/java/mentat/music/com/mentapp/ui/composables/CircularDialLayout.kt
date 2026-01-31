@@ -91,8 +91,8 @@ fun CircularDialLayout(
                 val targetIconSize = when {
                     isAnimatingOut && isClickedIcon -> 1000.dp
                     isAnimatingOut && !isClickedIcon -> 48.dp // Se quedan pequeños al salir
-                    isActive -> 56.dp // ANTES: 64.dp -> AHORA: 80.dp (¡Gigante!)
-                    else -> 32.dp     // ANTES: 48.dp -> AHORA: 40.dp (Más pequeñitos)
+                    isActive -> 70.dp // ANTES: 64.dp -> AHORA: 80.dp (¡Gigante!)
+                    else -> 42.dp     // ANTES: 48.dp -> AHORA: 40.dp (Más pequeñitos)
                 }
 
                 // Usamos spring para que rebote un poco al crecer

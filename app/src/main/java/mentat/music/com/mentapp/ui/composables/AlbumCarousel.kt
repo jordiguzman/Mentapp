@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -39,7 +40,6 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -71,7 +71,7 @@ fun AlbumCarousel(
     modifier: Modifier = Modifier,
     items: List<CarouselItem>,
     navController: NavController,
-    isConceptMode: Boolean,
+    isConceptMode: Boolean, // <--- ESTA ES LA CLAVE PARA ELEGIR DISEÑO
     initialPage: Int,
     onPageChanged: (Int) -> Unit
 ) {
@@ -98,11 +98,9 @@ fun AlbumCarousel(
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
-        // Quitamos Arrangement.Center para controlar nosotros la posición manual
     ) {
 
-        // 1. EMPUJÓN HACIA ABAJO (Weight)
-        // Esto empuja el carrusel hacia la mitad inferior de la pantalla
+        // 1. EMPUJÓN HACIA ABAJO
         Spacer(Modifier.weight(1f))
 
         // 2. EL CARRUSEL
@@ -110,175 +108,248 @@ fun AlbumCarousel(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
-                // No le damos weight para que ocupe solo lo que necesita
-                // y se quede pegado abajo gracias al Spacer superior
                 .padding(bottom = 16.dp),
             contentPadding = PaddingValues(horizontal = sidePadding),
             pageSpacing = 16.dp
         ) { pageIndex ->
             val item = items[pageIndex]
-            AlbumCard(
-                item = item,
-                navController = navController
-            )
+
+            // --- CORRECCIÓN: EL "CEREBRO" DE LA SELECCIÓN ---
+            // No nos fiamos solo de 'isConceptMode'. Miramos el item.
+            // Si el item tiene "content" (texto largo), ES UN BLOG/NOTICIA por narices.
+            val esBlog = !item.content.isNullOrBlank()
+
+            if (esBlog || isConceptMode) {
+                // Ahora sí: Esto forzará que entre aquí tu tarjeta de Blog
+                BlogCard(item = item, navController = navController)
+            } else {
+                MusicCard(item = item, navController = navController)
+            }
         }
 
         // 3. INDICADOR (PUNTITOS)
         HorizontalPagerIndicator(pagerState = pagerState)
 
-        // 4. MARGEN INFERIOR FINAL (Pequeño aire abajo del todo)
+        // 4. MARGEN INFERIOR FINAL
         Spacer(Modifier.height(32.dp))
     }
 }
 
 /**
- * LA TARJETA (Alineación corregida: Texto abajo)
+ * DISEÑO 1: CARD DE MÚSICA
+ * - Prioridad: Imagen muy grande (75% altura).
+ * - Texto: Centrado y corto abajo.
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
-fun AlbumCard(
+fun MusicCard(
     item: CarouselItem,
     navController: NavController
 ) {
-    val uriHandler = LocalUriHandler.current
-    val context = LocalContext.current
-    val vibrator = rememberVibrator()
-    val isClickable = item.targetUrl != null
-
-    val isNews = !item.content.isNullOrBlank()
-    val displayTitle = item.title?.uppercase() ?: ""
-    val displaySubtitle = if (isNews) {
-        item.artist ?: item.category ?: ""
-    } else {
-        item.artist ?: ""
-    }
-
-    val textShadow = Shadow(
-        color = Color.Black.copy(alpha = 0.8f),
-        offset = Offset(2f, 2f),
-        blurRadius = 4f
-    )
+    // Helpers de navegación y vibración
+    val (context, uriHandler, vibrator) = getHelpers()
+    val textShadow = getTextShadow()
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            // 0.65f: Hacemos la tarjeta ALTA (Formato móvil vertical)
-            // Cuanto menor es el número, más alta es la tarjeta.
-            .aspectRatio(1.1f)
-            .clickable(enabled = isClickable) {
-                if (item.targetUrl == null) return@clickable
-                vibrator.vibrateClick()
-                if (item.appPackageName != null) {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.targetUrl))
-                    intent.setPackage(item.appPackageName)
-                    try { context.startActivity(intent) } catch (e: ActivityNotFoundException) { uriHandler.openUri(item.targetUrl) }
-                } else {
-                    navController.navigate(AppScreens.WebViewScreen.createRoute(item.targetUrl))
+            .widthIn(max = 400.dp)
+            .clickable(enabled = item.targetUrl != null) {
+                handleClick(item, context, uriHandler, vibrator, navController)
+            },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // IMAGEN GIGANTE (75%)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.75f)
+                    .padding(top = 16.dp, start = 8.dp, end = 8.dp)
+                    .clip(RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.imageUrl != null) {
+                    GlideImage(
+                        model = item.imageUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier
+                            .fillMaxSize(0.95f) // Casi llena el hueco
+                            .clip(RoundedCornerShape(12.dp)),
+                        alignment = Alignment.Center,
+                        requestBuilderTransform = { it.apply(RequestOptions().override(800).skipMemoryCache(true)) }
+                    )
                 }
+            }
+
+            // TEXTO COMPACTO (25%)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.25f)
+                    .padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.Center, // Centrado verticalmente en su hueco
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = item.title?.uppercase() ?: "",
+                    style = MaterialTheme.typography.titleMedium.copy(shadow = textShadow),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    fontFamily = verdanaFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.artist ?: "",
+                    style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
+                    color = Color.White.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
+                    fontFamily = verdanaFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * DISEÑO 2: CARD DE BLOG (ConceptMode)
+ * - Prioridad: Legibilidad del texto.
+ * - Estructura: Imagen más pequeña arriba, texto alineado arriba-izquierda.
+ */
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+fun BlogCard(
+    item: CarouselItem,
+    navController: NavController
+) {
+    val (context, uriHandler, vibrator) = getHelpers()
+    val textShadow = getTextShadow()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 1. VOLVEMOS A FIJAR EL TAMAÑO (Para que no flote en el limbo)
+            // 0.85f = Una tarjeta alta (estilo naipe).
+            .widthIn(max = 400.dp)
+            .clickable(enabled = item.targetUrl != null) {
+                handleClick(item, context, uriHandler, vibrator, navController)
             },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                // 2. LA ORDEN SUPREMA: ANCLAR ARRIBA
+                // "Arrangement.Top" obliga a todo el contenido a pegarse al techo.
+                // Se acabó el flotar en medio.
+                .padding(12.dp), // Un poco de margen general para que no toque los bordes del card
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // -----------------------------------------------------
-            // 1. LA IMAGEN (65% DEL ESPACIO VERTICAL)
-            // Usamos 'weight' para que se adapte elásticamente.
-            // -----------------------------------------------------
+
+            // --- LA IMAGEN ---
+            // Tamaño fijo. Mentalidad MSX: "Mide 190 píxeles y punto".
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.65f) // <--- OJO: Ocupa el 65% de la altura disponible
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Transparent),
-                    contentAlignment = Alignment.Center
+                    .height(190.dp) // Altura Fija
+                    .clip(RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.TopCenter // Alineación interna Arriba
             ) {
                 if (item.imageUrl != null) {
                     GlideImage(
                         model = item.imageUrl,
-                        contentDescription = displayTitle,
-
-                        // --- CAMBIO CLAVE AQUÍ ---
-                        // En lugar de fillMaxSize() a secas (100%), ponemos un factor (ej. 0.92f = 92%).
-                        // Al sobrar un 8%, y estar alineado al CENTRO, se crea un padding relativo automático
-                        // por los 4 lados. Si quieres más aire, baja a 0.85f.
-                        modifier = Modifier
-                            .fillMaxSize(0.92f)
-                            // Opcional: Si quieres que la imagen tenga sus propias esquinas redondas
-                            // porque ya no toca los bordes del contenedor:
-                            .clip(RoundedCornerShape(12.dp)),
-
-                        // Alignment.Center es vital aquí para que ese "aire" se reparta equitativamente
-                        alignment = Alignment.Center,
-
-
-                        requestBuilderTransform = {
-                            it.apply(RequestOptions().override(800).skipMemoryCache(true))
-                        }
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(), // Llena los 190dp
+                        //contentScale = ContentScale.Crop,  // Recorta para llenar sin deformar
+                        requestBuilderTransform = { it.apply(RequestOptions().override(800).skipMemoryCache(true)) }
                     )
                 }
             }
 
-            // -----------------------------------------------------
-            // 2. LOS TEXTOS (35% DEL ESPACIO VERTICAL)
-            // Se quedan con el resto del espacio asegurado.
-            // -----------------------------------------------------
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.35f) // <--- OJO: Ocupa el 35% restante
-                    .padding(horizontal = 4.dp),
-                // Arrangement.SpaceEvenly distribuye el espacio disponible entre los textos
-                // para que no queden ni pegados arriba ni abajo.
-                verticalArrangement = Arrangement.SpaceEvenly,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // CATEGORÍA (Si la hay)
-                if (isNews && item.category != null) {
-                    Text(
-                        text = item.category.uppercase(),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFD700),
-                        textAlign = TextAlign.Center,
-                        fontFamily = verdanaFontFamily,
-                        maxLines = 1,
-                        style = TextStyle(shadow = textShadow)
-                    )
-                }
+            Spacer(modifier = Modifier.height(16.dp))
 
+            // --- EL TEXTO ---
+            // Se pintará justo debajo del Spacer.
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.Top, // Aseguramos que el texto también empiece arriba
+                horizontalAlignment = Alignment.Start  // Alineado a la izquierda
+            ) {
                 // TÍTULO
                 Text(
-                    text = displayTitle,
+                    text = item.title?.uppercase() ?: "",
                     style = MaterialTheme.typography.titleMedium.copy(shadow = textShadow),
                     fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
                     color = Color.White,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
+                    lineHeight = 22.sp,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 15.sp,
-                    lineHeight = 18.sp
+                    overflow = TextOverflow.Ellipsis
                 )
 
-                // AUTOR / FECHA
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // DESCRIPCIÓN
                 Text(
-                    text = displaySubtitle,
+                    text = item.artist ?: "",
                     style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
-                    color = Color.White.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center,
+                    color = Color.White.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 13.sp
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
 
+// --- HELPERS PARA NO REPETIR CÓDIGO ---
+
+@Composable
+fun getHelpers(): Triple<android.content.Context, androidx.compose.ui.platform.UriHandler, mentat.music.com.mentapp.ui.VibrationHelper> {
+    return Triple(LocalContext.current, LocalUriHandler.current, rememberVibrator())
+}
+
+fun getTextShadow() = Shadow(
+    color = Color.Black.copy(alpha = 0.8f),
+    offset = Offset(2f, 2f),
+    blurRadius = 4f
+)
+
+fun handleClick(
+    item: CarouselItem,
+    context: android.content.Context,
+    uriHandler: androidx.compose.ui.platform.UriHandler,
+    vibrator: mentat.music.com.mentapp.ui.VibrationHelper,
+    navController: NavController
+) {
+    if (item.targetUrl == null) return
+    vibrator.vibrateClick()
+    if (item.appPackageName != null) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.targetUrl))
+        intent.setPackage(item.appPackageName)
+        try {
+            context.startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            uriHandler.openUri(item.targetUrl)
+        }
+    } else {
+        navController.navigate(AppScreens.WebViewScreen.createRoute(item.targetUrl))
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -290,7 +361,7 @@ fun HorizontalPagerIndicator(
 ) {
     Row(
         modifier = modifier
-            .height(20.dp) // Altura reducida
+            .height(20.dp)
             .fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
