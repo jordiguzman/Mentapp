@@ -20,7 +20,6 @@ import mentat.music.com.mentapp.ui.screens.detail.AlbumDetailScreen
 import mentat.music.com.mentapp.ui.screens.home.HomeScreen
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
 import mentat.music.com.mentapp.ui.screens.music.MusicOverviewScreen
-import mentat.music.com.mentapp.ui.screens.splash.SplashScreen
 import mentat.music.com.mentapp.ui.screens.webview.WebViewScreen
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -35,18 +34,10 @@ fun AppNavigation() {
 
         NavHost(
             navController = navController,
-            startDestination = AppScreens.SplashScreen.route
+            // CAMBIO CLAVE: Arrancamos directo en la HOME
+            // El efecto de apertura lo hace el MeliesShutter en MainActivity
+            startDestination = AppScreens.HomeScreen.route
         ) {
-
-            // --- SPLASH SCREEN ---
-            composable(
-                route = AppScreens.SplashScreen.route,
-                exitTransition = {
-                    fadeOut(animationSpec = tween(animDuration))
-                }
-            ) {
-                SplashScreen(navController = navController)
-            }
 
             // --- RUTA 1: HomeScreen ---
             composable(

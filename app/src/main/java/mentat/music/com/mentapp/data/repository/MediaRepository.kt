@@ -79,7 +79,7 @@ class MediaRepository(private val mediaDao: MediaDao) {
             Log.e("MediaRepository", "Error general en refreshMedia", e)
         }
     }
-    // HELPER: Convertidor de JSON a Base de Datos (ARQUITECTURA CORRECTA)
+    // HELPER: Convertidor de JSON a Base de Datos (VERSIÓN 3.0 - LIMPIA Y BILINGÜE)
     private fun mapToEntity(list: List<CarouselItem>?, category: String, targetList: MutableList<MediaEntity>) {
         if (list == null) return
 
@@ -88,34 +88,32 @@ class MediaRepository(private val mediaDao: MediaDao) {
             // 1. LÓGICA DE CLASIFICACIÓN
             val esNoticia = category in listOf("Audio", "Blog", "Divulgacion")
 
-            // 2. PREPARACIÓN DE DATOS
-            // Si es noticia, el texto real viene en el JSON 'artist' -> Lo movemos a DB 'content'
-            val textoParaGuardar = if (esNoticia) item.artist else null
-
-            // Si es noticia, queremos la FECHA en el subtítulo. Si es música, el ARTISTA.
-            val subtituloParaGuardar = if (esNoticia) item.date else item.artist
-
-            // 3. DEBUG DE VERIFICACIÓN (Solo para el item problemático)
-            if (item.title?.contains("plugins", ignoreCase = true) == true) {
-                Log.d("MENTAPP_ARCH", "Guardando en DB -> Content: ${textoParaGuardar?.length ?: 0} chars | Artist: $subtituloParaGuardar")
-            }
-
             targetList.add(
                 MediaEntity(
                     category = category,
+
+                    // --- ESPAÑOL ---
                     title = item.title,
+                    // CORRECCIÓN: Ahora el PHP envía el texto en 'content' correctamente.
+                    // Si es noticia, lo guardamos. Si es música, lo dejamos null.
+                    content = if (esNoticia) item.content else null,
 
-                    // --- AQUÍ ESTÁ LA CORRECCIÓN ---
-                    content = textoParaGuardar,      // El resumen va a su sitio
-                    artist = subtituloParaGuardar,   // La fecha/artista va a su sitio
-                    // -------------------------------
+                    // En noticias esto es la FECHA, en música es el ARTISTA.
+                    artist = item.artist,
 
+                    // --- INGLÉS (LO NUEVO) ---
+                    // Mapeo directo de las nuevas columnas
                     titleEn = item.titleEn,
-                    contentEn = item.artistEn, // En inglés mantenemos la lógica similar
 
-                    imageUrl = item.imageUrl,
-                    targetUrl = item.targetUrl,
+                    // Lo mismo: Si es noticia, guardamos el resumen en inglés.
+                    contentEn = if (esNoticia) item.contentEn else null,
+
+                    // La URL de destino en inglés
                     targetUrlEn = item.targetUrlEn,
+
+                    // --- COMUNES ---
+                    imageUrl = item.imageUrl,
+                    targetUrl = item.targetUrl, // URL español por defecto
                     appPackageName = item.appPackageName
                 )
             )

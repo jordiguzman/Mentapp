@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -104,6 +105,7 @@ import mentat.music.com.mentapp.ui.composables.AlbumCarousel
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
 import mentat.music.com.mentapp.ui.composables.DialItem
+import mentat.music.com.mentapp.ui.composables.MiniCircularDialLayout
 import mentat.music.com.mentapp.ui.composables.SolarisPlayButton
 import mentat.music.com.mentapp.ui.composables.TRANSITION_DURATION
 import mentat.music.com.mentapp.ui.composables.VideoBackground
@@ -141,7 +143,9 @@ fun HomeScreen(
 
     // AJUSTE DE UX: Inicio rotado -30º (PI/6) para que el ítem 2 (Blog) quede abajo (90º)
     val startAngle = (-Math.PI / 6).toFloat()
-    val webMenuRotationAnim = remember { Animatable(startAngle) }
+    val webMenuRotationAnim = remember {
+        Animatable((Math.PI / 2).toFloat()) // <--- AQUÍ ESTÁ LA CLAVE
+    }
 
     // VARIABLE PARA EFECTO FLIP (Moneda 3D)
     val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
@@ -239,6 +243,18 @@ fun HomeScreen(
         ), label = "time"
     )
     var frozenTime by remember { mutableStateOf(0f) }
+
+    // 1. DATOS REALES DEL ENTORNO
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+
+// 2. TUS CONSTANTES DE DISEÑO (Esto no es hardcoding, es definir tu estilo)
+    val iconSize = 46.dp   // El tamaño máximo que le pusimos al icono en el componente
+    val edgePadding = 24.dp // Cuánto aire quieres dejar desde el borde de la pantalla
+
+// 3. FÓRMULA EXACTA DE INGENIERÍA 📐
+// "El radio es la distancia desde el centro hasta donde cabe el icono sin chocarse"
+    val dynamicRadius = (screenWidth / 2) - (iconSize / 2) - edgePadding
 
     // --- FUNCIONES AUXILIARES ---
     val context = LocalContext.current
@@ -633,7 +649,7 @@ fun HomeScreen(
                                                     scope.launch {
                                                         webMenuRotationAnim.animateTo(
                                                             targetValue = targetSnapAngle,
-                                                            animationSpec = spring(dampingRatio = 0.95f, stiffness = 40f)
+                                                            animationSpec = spring(dampingRatio = 0.6f, stiffness = 300f)
                                                         )
                                                         homeViewModel.updateWebMenuRotationAngle(targetSnapAngle)
                                                     }
@@ -642,15 +658,23 @@ fun HomeScreen(
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularDialLayout(
+
+
+                                    // 2. LA FÓRMULA MAESTRA
+                                    // Dividimos el ancho total entre 3.3 (ajustable).
+                                    // - Si el móvil mide 400dp -> Radio = 121dp
+                                    // - Si el móvil mide 360dp (pequeño) -> Radio = 109dp
+                                    // ¡Se adapta solo!
+                                    val dynamicRadius = screenWidth / 3.5f
+
+                                    // 3. LLAMADA AL COMPONENTE
+                                    MiniCircularDialLayout(
                                         modifier = Modifier.fillMaxSize(),
                                         items = itemsWebMenu,
                                         currentRotation = webMenuRotationAnim.value,
-                                        iconPathRadius = miniRadius,
-                                        isAnimatingOut = false,
-                                        clickedIconIndex = -1,
-                                        isExpansionFinished = false
+                                        radius = miniRadius
                                     )
+
                                 }
                             }
 

@@ -3,7 +3,7 @@ package mentat.music.com.mentapp.data.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-@Serializable // <--- ESTO ES VITAL PARA KTOR
+@Serializable // Asegúrate de tener esta anotación si usas Kotlin Serialization
 data class CarouselItem(
     val id: String? = null,
     val title: String? = null,
@@ -13,11 +13,11 @@ data class CarouselItem(
     val artist: String? = null,
     val content: String? = null,
 
-    // --- MAPEO PARA KTOR / KOTLIN SERIALIZATION ---
-    @SerialName("title_en") val titleEn: String? = null,
-    @SerialName("artist_en") val artistEn: String? = null,
-    @SerialName("content_en") val contentEn: String? = null,
-    @SerialName("targetUrl_en") val targetUrlEn: String? = null,
+    // --- CORRECCIÓN: Los nombres deben coincidir con el JSON del servidor (CamelCase) ---
+    @SerialName("titleEn") val titleEn: String? = null,         // Antes "title_en"
+    @SerialName("artistEn") val artistEn: String? = null,       // Antes "artist_en"
+    @SerialName("contentEn") val contentEn: String? = null,     // Antes "content_en"
+    @SerialName("targetUrlEn") val targetUrlEn: String? = null, // Antes "targetUrl_en"
 
     val date: String? = null,
     val appPackageName: String? = null

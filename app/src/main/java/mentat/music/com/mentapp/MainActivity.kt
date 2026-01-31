@@ -9,6 +9,8 @@ import androidx.annotation.RequiresApi
 import mentat.music.com.mentapp.ui.navigation.AppNavigation
 import mentat.music.com.mentapp.ui.theme.MentappTheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen // <-- ¡Añade esta!
+import mentat.music.com.mentapp.ui.screens.splash.MeliesDialShutter
+
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,8 +19,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge() // ¡Importante para el fondo inmersivo!
         setContent {
             MentappTheme {
-                // Ya no llama a HomeScreen, llama al "Cerebro" de Navegación
-                AppNavigation()
+                // 2. AQUI LLAMAMOS AL OBTURADOR
+                // Envuelve a toda la navegación para pintar por encima
+                MeliesDialShutter {
+                    AppNavigation()
+                }
             }
         }
     }
