@@ -102,6 +102,7 @@ import mentat.music.com.mentapp.R
 import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.composables.AlbumCarousel
+import mentat.music.com.mentapp.ui.composables.AlbumCarouselBox
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
 import mentat.music.com.mentapp.ui.composables.DialItem
@@ -844,7 +845,7 @@ fun HomeScreen(
 
                         if (itemsToShow != null) {
                             key(safeInitialPage to itemSize) {
-                                AlbumCarousel(
+                                AlbumCarouselBox(
                                     items = itemsToShow,
                                     navController = navController,
                                     isConceptMode = isConceptMode,

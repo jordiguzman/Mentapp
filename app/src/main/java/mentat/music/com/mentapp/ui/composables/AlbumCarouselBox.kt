@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -67,11 +69,11 @@ private val verdanaFontFamily = FontFamily(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AlbumCarousel(
+fun AlbumCarouselBox(
     modifier: Modifier = Modifier,
     items: List<CarouselItem>,
     navController: NavController,
-    isConceptMode: Boolean, // <--- ESTA ES LA CLAVE PARA ELEGIR DISEÑO
+    isConceptMode: Boolean,
     initialPage: Int,
     onPageChanged: (Int) -> Unit
 ) {
@@ -94,84 +96,100 @@ fun AlbumCarousel(
         }
     }
 
-    // ESTRUCTURA PRINCIPAL DEL CARRUSEL
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(bottom = 32.dp), // Un poco de aire extra abajo por seguridad
-        horizontalAlignment = Alignment.CenterHorizontally,
-        // ESTA ES LA CLAVE 👇
-        verticalArrangement = Arrangement.Center
+    // --- ARQUITECTURA DE CAPAS (LAYERED ARCHITECTURE) ---
+    // Usamos un Box raíz que ocupa todo el espacio.
+    // Los hijos se superponen según su alineación, sin empujarse.
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center // Por defecto, todo al centro
     ) {
 
-        // 1. EMPUJÓN HACIA ABAJO
-        Spacer(Modifier.weight(1f))
-
-        // 2. EL CARRUSEL
+        // CAPA 1: EL CARRUSEL (FONDO)
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .align(Alignment.Center) // Centrado absoluto
+                // IMPORTANTE: Margen de seguridad inferior.
+                // Esto impide que el contenido de la carta baje tanto que toque los puntos.
+                .padding(bottom = 50.dp),
             contentPadding = PaddingValues(horizontal = sidePadding),
-            pageSpacing = 16.dp
+            pageSpacing = 16.dp,
+            verticalAlignment = Alignment.CenterVertically
         ) { pageIndex ->
             val item = items[pageIndex]
-
-            // --- CORRECCIÓN: EL "CEREBRO" DE LA SELECCIÓN ---
-            // No nos fiamos solo de 'isConceptMode'. Miramos el item.
-            // Si el item tiene "content" (texto largo), ES UN BLOG/NOTICIA por narices.
             val esBlog = !item.content.isNullOrBlank()
 
             if (esBlog || isConceptMode) {
-                // Ahora sí: Esto forzará que entre aquí tu tarjeta de Blog
-                BlogCard(item = item, navController = navController)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    // Y aquí usamos el BIAS (Horizontal, Vertical)
+                    // 0f = Centrado horizontalmente
+                    // -0.7f = Tirando hacia arriba (Top es -1.0).
+                    // Juega con este número: -0.5, -0.7, -0.9...
+                    contentAlignment = BiasAlignment(0f, -0.7f)
+                ) {
+                    BlogCardBox(item = item, navController = navController)
+                }
             } else {
-                MusicCard(item = item, navController = navController)
+                MusicCardBox(item = item, navController = navController)
             }
         }
 
-        // 3. INDICADOR (PUNTITOS)
-        HorizontalPagerIndicator(pagerState = pagerState)
-
-        // 4. MARGEN INFERIOR FINAL
-        //Spacer(Modifier.weight(1f))
+        // CAPA 2: EL INDICADOR (FRENTE)
+        // Está "clavado" abajo. Es imposible que desaparezca o se mueva.
+        HorizontalPagerIndicatorBox(
+            pagerState = pagerState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter) // Anclaje al suelo
+                .padding(bottom = 24.dp) // Separación del borde de la pantalla
+        )
     }
 }
 
 /**
- * DISEÑO 1: CARD DE MÚSICA
- * - Prioridad: Imagen muy grande (75% altura).
- * - Texto: Centrado y corto abajo.
+ * MUSIC CARD
+ * - Diseño cuadrado y centrado.
+ */
+/**
+ * MUSIC CARD (Versión Box - Imagen Reducida)
+ * - Hemos aumentado el padding lateral de 8dp a 48dp.
+ * - Resultado: La imagen se hace más pequeña y deja sitio al texto.
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
-fun MusicCard(
+fun MusicCardBox(
     item: CarouselItem,
     navController: NavController
 ) {
-    // Helpers de navegación y vibración
-    val (context, uriHandler, vibrator) = getHelpers()
-    val textShadow = getTextShadow()
+    val (context, uriHandler, vibrator) = getHelpersBox()
+    val textShadow = getTextShadowBox()
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .widthIn(max = 400.dp)
             .clickable(enabled = item.targetUrl != null) {
-                handleClick(item, context, uriHandler, vibrator, navController)
+                handleClickBox(item, context, uriHandler, vibrator, navController)
             },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // IMAGEN GIGANTE (75%)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // 1. IMAGEN CUADRADA (REDUCIDA)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.75f)
-                    .padding(top = 16.dp, start = 8.dp, end = 8.dp)
+                    // --- CAMBIO AQUÍ ---
+                    // Antes era 8.dp. Ahora ponemos 48.dp (o más si quieres).
+                    // Al estrecharla, baja su altura y deja sitio al autor.
+                    .padding(horizontal = 48.dp)
+                    .aspectRatio(1f) // Sigue siendo cuadrada
                     .clip(RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -179,22 +197,19 @@ fun MusicCard(
                     GlideImage(
                         model = item.imageUrl,
                         contentDescription = item.title,
-                        modifier = Modifier
-                            .fillMaxSize(0.95f) // Casi llena el hueco
-                            .clip(RoundedCornerShape(12.dp)),
-                        alignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize(),
                         requestBuilderTransform = { it.apply(RequestOptions().override(800).skipMemoryCache(true)) }
                     )
                 }
             }
 
-            // TEXTO COMPACTO (25%)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2. TEXTOS
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.25f)
-                    .padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.Center, // Centrado verticalmente en su hueco
+                    .padding(horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -207,6 +222,7 @@ fun MusicCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // Ahora este texto debería tener espacio de sobra para respirar
                 Text(
                     text = item.artist ?: "",
                     style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
@@ -222,27 +238,24 @@ fun MusicCard(
 }
 
 /**
- * DISEÑO 2: CARD DE BLOG (ConceptMode)
- * - Prioridad: Legibilidad del texto.
- * - Estructura: Imagen más pequeña arriba, texto alineado arriba-izquierda.
+ * BLOG CARD
+ * - Diseño rectangular y alineado arriba.
  */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
-fun BlogCard(
+fun BlogCardBox(
     item: CarouselItem,
     navController: NavController
 ) {
-    val (context, uriHandler, vibrator) = getHelpers()
-    val textShadow = getTextShadow()
+    val (context, uriHandler, vibrator) = getHelpersBox()
+    val textShadow = getTextShadowBox()
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            // 1. VOLVEMOS A FIJAR EL TAMAÑO (Para que no flote en el limbo)
-            // 0.85f = Una tarjeta alta (estilo naipe).
             .widthIn(max = 400.dp)
             .clickable(enabled = item.targetUrl != null) {
-                handleClick(item, context, uriHandler, vibrator, navController)
+                handleClickBox(item, context, uriHandler, vibrator, navController)
             },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -250,30 +263,25 @@ fun BlogCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                // 2. LA ORDEN SUPREMA: ANCLAR ARRIBA
-                // "Arrangement.Top" obliga a todo el contenido a pegarse al techo.
-                // Se acabó el flotar en medio.
-                .padding(12.dp), // Un poco de margen general para que no toque los bordes del card
-            verticalArrangement = Arrangement.Top,
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.Top, // Alineado arriba
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            // --- LA IMAGEN ---
-            // Tamaño fijo. Mentalidad MSX: "Mide 190 píxeles y punto".
+            // 1. CABECERA RECTANGULAR
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(190.dp) // Altura Fija
+                    .height(180.dp) // Altura fija para evitar saltos
                     .clip(RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.TopCenter // Alineación interna Arriba
+                contentAlignment = Alignment.Center
             ) {
                 if (item.imageUrl != null) {
                     GlideImage(
                         model = item.imageUrl,
                         contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(), // Llena los 190dp
-                        //contentScale = ContentScale.Crop,  // Recorta para llenar sin deformar
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
                         requestBuilderTransform = { it.apply(RequestOptions().override(800).skipMemoryCache(true)) }
                     )
                 }
@@ -281,19 +289,16 @@ fun BlogCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- EL TEXTO ---
-            // Se pintará justo debajo del Spacer.
+            // 2. TEXTO ALINEADO A LA IZQUIERDA
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.Top, // Aseguramos que el texto también empiece arriba
-                horizontalAlignment = Alignment.Start  // Alineado a la izquierda
+                horizontalAlignment = Alignment.Start
             ) {
-                // TÍTULO
                 Text(
                     text = item.title?.uppercase() ?: "",
                     style = MaterialTheme.typography.titleMedium.copy(shadow = textShadow),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 19.sp,
+                    fontSize = 18.sp,
                     color = Color.White,
                     textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
@@ -304,7 +309,6 @@ fun BlogCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // DESCRIPCIÓN
                 Text(
                     text = item.artist ?: "",
                     style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
@@ -320,20 +324,20 @@ fun BlogCard(
     }
 }
 
-// --- HELPERS PARA NO REPETIR CÓDIGO ---
+// --- HELPERS ---
 
 @Composable
-fun getHelpers(): Triple<android.content.Context, androidx.compose.ui.platform.UriHandler, mentat.music.com.mentapp.ui.VibrationHelper> {
+fun getHelpersBox(): Triple<android.content.Context, androidx.compose.ui.platform.UriHandler, mentat.music.com.mentapp.ui.VibrationHelper> {
     return Triple(LocalContext.current, LocalUriHandler.current, rememberVibrator())
 }
 
-fun getTextShadow() = Shadow(
+fun getTextShadowBox() = Shadow(
     color = Color.Black.copy(alpha = 0.8f),
     offset = Offset(2f, 2f),
     blurRadius = 4f
 )
 
-fun handleClick(
+fun handleClickBox(
     item: CarouselItem,
     context: android.content.Context,
     uriHandler: androidx.compose.ui.platform.UriHandler,
@@ -357,7 +361,7 @@ fun handleClick(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HorizontalPagerIndicator(
+fun HorizontalPagerIndicatorBox(
     pagerState: PagerState,
     modifier: Modifier = Modifier,
     activeColor: Color = Color.White,
