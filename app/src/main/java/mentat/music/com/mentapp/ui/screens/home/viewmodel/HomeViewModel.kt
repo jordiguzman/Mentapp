@@ -118,28 +118,40 @@ class HomeViewModel(
 
     // --- HELPER MAESTRO: TRADUCTOR ---
     // Esta función decide qué texto mostrar según el idioma seleccionado
+    // Archivo: HomeViewModel.kt
+
     private fun mapEntityToItem(entity: MediaEntity, language: Language): CarouselItem {
         val isEnglish = language == Language.EN
+
+        // 1. Preparamos el contenido real (el texto largo)
+        val realContent = if (isEnglish && !entity.contentEn.isNullOrBlank()) entity.contentEn else entity.content
+
+        // 2. Preparamos la fecha/artista original
+        val realArtist = entity.artist // "19/01/2026"
 
         return CarouselItem(
             id = entity.id.toString(),
             imageUrl = entity.imageUrl,
             appPackageName = entity.appPackageName,
             category = entity.category,
-            date = entity.artist, // Usamos el campo artist como fecha para noticias si aplica
+            date = realArtist,
 
-            // --- LÓGICA DE TRADUCCIÓN ---
-            // Título
             title = if (isEnglish && !entity.titleEn.isNullOrBlank()) entity.titleEn else entity.title,
 
-            // Contenido (Resumen en noticias)
-            content = if (isEnglish && !entity.contentEn.isNullOrBlank()) entity.contentEn else entity.content,
-
-            // URL de destino (por si tienes links diferentes para inglés)
+            // targetUrl...
             targetUrl = if (isEnglish && !entity.targetUrlEn.isNullOrBlank()) entity.targetUrlEn else entity.targetUrl,
 
-            // Artista (En música suele ser igual, pero si tienes lógica especial, va aquí)
-            artist = entity.artist
+            // content se queda con el contenido por si acaso
+            content = realContent,
+
+            // 🔥 AQUÍ ESTÁ EL TRUCO DEL ALMENDRUCO 🔥
+            // Si es un Blog, le metemos el TEXTO LARGO (realContent) en la variable 'artist'.
+            // Si es Música, le dejamos el artista original.
+            artist = if (entity.category == "Blog" || entity.category == "Divulgacion") {
+                realContent // <--- ¡AQUÍ ESTÁ EL TEXTO QUE BUSCAS!
+            } else {
+                realArtist // Para música (Spotify, etc) dejamos el artista
+            }
         )
     }
 

@@ -22,8 +22,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import mentat.music.com.mentapp.R
 
 @Composable
 fun SolarisPlayButton(
@@ -72,7 +74,7 @@ fun SolarisPlayButton(
     ) {
         // 3. EL ICONO (Negro)
         Icon(
-            imageVector = Icons.Filled.PlayArrow,
+            painter = painterResource(id = R.drawable.ic_cambio_dial),
             contentDescription = "Action",
             tint = Color.Black.copy(alpha = 0.8f),
             modifier = Modifier.size(size * 0.4f)

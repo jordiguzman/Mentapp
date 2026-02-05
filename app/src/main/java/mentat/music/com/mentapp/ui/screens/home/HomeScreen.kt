@@ -43,13 +43,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -101,7 +95,6 @@ import kotlinx.coroutines.launch
 import mentat.music.com.mentapp.R
 import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
-import mentat.music.com.mentapp.ui.composables.AlbumCarousel
 import mentat.music.com.mentapp.ui.composables.AlbumCarouselBox
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
@@ -319,19 +312,19 @@ fun HomeScreen(
             DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) {
                 activateExpansion(0)
             },
-            DialItem("DJSessions", "DJ Sessions", Icons.Default.List, Color(0xFF9C27B0)) {
+            DialItem("DJSessions", "DJ Sessions", R.drawable.ic_sessions, Color(0xFF000000)) {
                 launchUrl(MentatConstants.URL_DJ_SESSIONS)
             },
-            DialItem("Subs", "Suscriptores", Icons.Default.Lock, Color(0xFFFFD700)) {
+            DialItem("Subs", "Suscriptores", Icons.Default.Lock, Color(0xFF000000)) {
                 showComingSoon()
             },
             DialItem("Archive", "Archivo", R.drawable.ic_menu_concept, Color(0xFF8A2BE2)) {
                 launchUrl(MentatConstants.URL_BLOG_OLD)
             },
-            DialItem("Contact", "Contacto", Icons.Default.Email, Color(0xFF4CAF50)) {
+            DialItem("Contact", "Contacto", R.drawable.ic_mail, Color(0xFF000000)) {
                 launchUrl("mailto:info@mentat-music.com")
             },
-            DialItem("Live", "Directo", Icons.Default.LocationOn, Color(0xFFE91E63)) {
+            DialItem("Live", "Directo", R.drawable.ic_live_music, Color(0xFF000000)) {
                 showComingSoon()
             }
         )
@@ -340,19 +333,19 @@ fun HomeScreen(
     // DIAL 3: MINI DIAL WEB (3 ÍTEMS)
     val itemsWebMenu = remember {
         listOf(
-            DialItem("Audio", "Tutoriales", Icons.Default.Call, Color(0xFF000000)) {
+            DialItem("Audio", "Tutoriales", R.drawable.ic_audio, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Audio")
                 homeViewModel.setSelectedWebCategory("Audio")
                 homeViewModel.setWebMenuOpen(false)
                 activateExpansion(-1)
             },
-            DialItem("Divulgacion", "Ciencia", Icons.Default.Star, Color(0xFF000000)) {
+            DialItem("Divulgacion", "Ciencia", R.drawable.ic_divulgacion, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Divulgacion")
                 homeViewModel.setSelectedWebCategory("Divulgacion")
                 homeViewModel.setWebMenuOpen(false)
                 activateExpansion(-1)
             },
-            DialItem("Blog", "Blog", Icons.Default.Create, Color(0xFF000000)) {
+            DialItem("Blog", "Blog", R.drawable.ic_blog, Color(0xFF000000)) {
                 homeViewModel.filterByCategory("Blog")
                 homeViewModel.setSelectedWebCategory("Blog")
                 homeViewModel.setWebMenuOpen(false)
@@ -786,7 +779,7 @@ fun HomeScreen(
                         conceptDataAsCarousel = newsPosts.map { entity ->
                             val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString()
                                 .replace("\uFFFC", "").replace("\n", " ").trim()
-                            val snippet = if (plainText.length > 200) plainText.take(200).substringBeforeLast(" ") + "..." else plainText
+                            val snippet = plainText
 
                             CarouselItem(
                                 title = entity.title,

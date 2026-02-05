@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -58,6 +59,12 @@ import mentat.music.com.mentapp.R
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.ui.navigation.AppScreens
 import mentat.music.com.mentapp.ui.rememberVibrator
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 
 // --- FUENTES ---
 private val verdanaFontFamily = FontFamily(
@@ -241,6 +248,11 @@ fun MusicCardBox(
  * BLOG CARD
  * - Diseño rectangular y alineado arriba.
  */
+/**
+ * BLOG CARD
+ * - Diseño rectangular y alineado arriba.
+ * - AHORA CON SCROLL EN EL TEXTO
+ */
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun BlogCardBox(
@@ -249,6 +261,9 @@ fun BlogCardBox(
 ) {
     val (context, uriHandler, vibrator) = getHelpersBox()
     val textShadow = getTextShadowBox()
+
+    // 1. ESTADO PARA EL SCROLL
+    val scrollState = rememberScrollState()
 
     Card(
         modifier = Modifier
@@ -265,14 +280,14 @@ fun BlogCardBox(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalArrangement = Arrangement.Top, // Alineado arriba
+            verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. CABECERA RECTANGULAR
+            // FOTO
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp) // Altura fija para evitar saltos
+                    .height(180.dp)
                     .clip(RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -289,11 +304,12 @@ fun BlogCardBox(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 2. TEXTO ALINEADO A LA IZQUIERDA
+            // TEXTOS
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.Start
             ) {
+                // TÍTULO
                 Text(
                     text = item.title?.uppercase() ?: "",
                     style = MaterialTheme.typography.titleMedium.copy(shadow = textShadow),
@@ -303,21 +319,33 @@ fun BlogCardBox(
                     textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
                     lineHeight = 22.sp,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // --- TEXTO PROBLEMÁTICO ---
                 Text(
-                    text = item.artist ?: "",
+                    text = item.artist ?: "", // Aquí llega el contenido gracias al ViewModel
+
+                    // PRUEBA DEL SEMÁFORO: COLOR AMARILLO
+                    // Si sigue saliendo blanco, el código no se ha actualizado.
+                    color = Color.White,
+
                     style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
-                    color = Color.White.copy(alpha = 0.9f),
                     textAlign = TextAlign.Start,
                     fontFamily = verdanaFontFamily,
                     fontSize = 14.sp,
                     lineHeight = 18.sp,
-                    overflow = TextOverflow.Ellipsis
+
+                    // --- LA SOLUCIÓN: SCROLL ---
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 350.dp) // Damos más altura
+                        .verticalScroll(scrollState) // Permitimos deslizar
+
+                    // IMPORTANTE: NO HAY maxLines NI overflow AQUÍ
                 )
             }
         }
