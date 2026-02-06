@@ -46,8 +46,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -88,6 +86,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -115,7 +114,8 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 
-private val verdanaFontFamily = FontFamily(
+// Mantenemos la fuente pública y global
+val VerdanaFontFamily = FontFamily(
     Font(R.font.verdana_regular, FontWeight.Normal),
     Font(R.font.verdana_italic, FontWeight.Normal, FontStyle.Italic),
     Font(R.font.verdana_bold, FontWeight.Bold),
@@ -138,20 +138,13 @@ fun HomeScreen(
     // --- ESTADOS MINI DIAL ---
     val isWebMenuOpen by homeViewModel.isWebMenuOpen.collectAsState()
     val webMenuRotationAngle by homeViewModel.webMenuRotationAngle.collectAsState()
+    val webMenuRotationAnim = remember { Animatable(0f) }
 
-    // AJUSTE DE UX: Inicio rotado -30º (PI/6) para que el ítem 2 (Blog) quede abajo (90º)
-    val startAngle = (-Math.PI / 6).toFloat()
-    val webMenuRotationAnim = remember {
-        Animatable(0f) // <--- AQUÍ ESTÁ LA CLAVE
-    }
-
-    // VARIABLE PARA EFECTO FLIP (Moneda 3D)
+    // VARIABLE PARA EFECTO FLIP
     val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
     val dialBlur = remember { Animatable(0f) }
 
-    // ESTADO PARA EL DIAL (True = Info, False = Audio)
     var isMainDial by remember { mutableStateOf(true) }
-    // Ahora leemos la variable DEL VIEWMODEL
     val selectedWebCategory by homeViewModel.selectedWebCategory.collectAsState()
 
     val currentPage by homeViewModel.currentPage
@@ -161,22 +154,14 @@ fun HomeScreen(
     val dialScale = remember { Animatable(1.0f) }
     val vibrator = rememberVibrator()
 
-
-
-    // --- SNAP PARA 6 ICONOS (DIAL GRANDE) ---
     val angleStep = (2 * Math.PI.toFloat() / 6)
     val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 
-    // --- Sincronizar Mini Dial ---
     LaunchedEffect(webMenuRotationAngle) {
         webMenuRotationAnim.snapTo(webMenuRotationAngle)
     }
 
-    // --- REBOTE INICIAL ---
-    val bounceSpec = spring<Float>(
-        dampingRatio = 0.5f,
-        stiffness = 150f
-    )
+    val bounceSpec = spring<Float>(dampingRatio = 0.5f, stiffness = 150f)
     val bounceStartScale = 1.1f
     LaunchedEffect(Unit) {
         scope.launch {
@@ -186,18 +171,15 @@ fun HomeScreen(
         }
     }
 
-    // 1. RECOLECCIÓN DEL ESTADO
     val currentLanguage by homeViewModel.currentLanguage.collectAsState()
     val buttonText = if (currentLanguage == HomeViewModel.Language.ES) "EN" else "ES"
 
-    // --- INMERSIVO ---
     val view = LocalView.current
     val window = (view.context as Activity).window
     LaunchedEffect(key1 = window) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val controller = WindowCompat.getInsetsController(window, view)
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(WindowInsetsCompat.Type.systemBars())
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             @Suppress("DEPRECATION")
@@ -212,18 +194,18 @@ fun HomeScreen(
         }
     }
 
-    // --- ANIMACIONES VISUALES ---
+    // --- CORRECCIÓN 1: Argumentos nombrados en animateFloatAsState con label explícito ---
     val dialSceneAlpha by animateFloatAsState(
         targetValue = if (isExpansionFinished) 0f else 1f,
-        animationSpec = tween(durationMillis = TRANSITION_DURATION),
+        animationSpec = tween(TRANSITION_DURATION),
         label = "dialSceneAlpha"
     )
     val arrowsAlpha by animateFloatAsState(
         targetValue = if (!isAnimatingOut) 0.4f else 0.0f,
-        animationSpec = tween(300), label = "arrowsAlpha"
+        animationSpec = tween(300),
+        label = "arrowsAlpha"
     )
 
-    // --- TAMAÑOS ---
     val iconPathRadius = 140.dp
     val donutPadding = 8.dp
     val donutThickness = 76.dp + (donutPadding * 2)
@@ -232,7 +214,6 @@ fun HomeScreen(
     val thicknessPx = with(LocalDensity.current) { donutThickness.toPx() }
     val arrowsYOffset = iconPathRadius
 
-    // --- SHADER ---
     val infiniteTransition = rememberInfiniteTransition(label = "shader time")
     val time by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -240,23 +221,17 @@ fun HomeScreen(
         animationSpec = infiniteRepeatable(
             tween(durationMillis = 600000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
-        ), label = "time"
+        ),
+        label = "time"
     )
     var frozenTime by remember { mutableStateOf(0f) }
 
-    // 1. DATOS REALES DEL ENTORNO
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-
-// 2. TUS CONSTANTES DE DISEÑO (Esto no es hardcoding, es definir tu estilo)
-    val iconSize = 46.dp   // El tamaño máximo que le pusimos al icono en el componente
-    val edgePadding = 24.dp // Cuánto aire quieres dejar desde el borde de la pantalla
-
-// 3. FÓRMULA EXACTA DE INGENIERÍA 📐
-// "El radio es la distancia desde el centro hasta donde cabe el icono sin chocarse"
+    val iconSize = 46.dp
+    val edgePadding = 24.dp
     val dynamicRadius = (screenWidth / 2) - (iconSize / 2) - edgePadding
 
-    // --- FUNCIONES AUXILIARES ---
     val context = LocalContext.current
     fun launchUrl(url: String) {
         try {
@@ -281,137 +256,57 @@ fun HomeScreen(
         }
     }
 
-    // =====================================================================
-    // DEFINICIÓN DE LOS DIALES
-    // =====================================================================
-
-    // DIAL 1: REDES Y WEB (6 ÍTEMS)
     val itemsDial1 = remember {
         listOf(
-            DialItem("Bluesky", "Bluesky", R.drawable.ic_menu_social, Color(0xFF0085FF)) {
-                launchUrl(MentatConstants.URL_BLUESKY)
-            },
-            DialItem("YouTube", "YouTube", R.drawable.ic_menu_youtube, Color(0xFFFF0000)) {
-                activateExpansion(1)
-            },
-            DialItem("Spotify", "Spotify", R.drawable.ic_menu_streams, Color(0xFF1DB954)) {
-                activateExpansion(2)
-            },
-            DialItem("Bandcamp", "Bandcamp", R.drawable.ic_menu_bandcamp, Color(0xFF629AA9)) {
-                activateExpansion(3)
-            },
-            DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) {
-                activateExpansion(4)
-            },
-            DialItem("Web", "Mundo Web", R.drawable.ic_logo_mentat, Color(0xFF893471)) {
-                scope.launch {
-                    homeViewModel.setWebMenuOpen(true)
-                    vibrator.vibrateClick()
-                }
-            }
+            DialItem("Bluesky", "Bluesky", R.drawable.ic_menu_social, Color(0xFF0085FF)) { launchUrl(MentatConstants.URL_BLUESKY) },
+            DialItem("YouTube", "YouTube", R.drawable.ic_menu_youtube, Color(0xFFFF0000)) { activateExpansion(1) },
+            DialItem("Spotify", "Spotify", R.drawable.ic_menu_streams, Color(0xFF1DB954)) { activateExpansion(2) },
+            DialItem("Bandcamp", "Bandcamp", R.drawable.ic_menu_bandcamp, Color(0xFF629AA9)) { activateExpansion(3) },
+            DialItem("SoundCloud", "SoundCloud", R.drawable.ic_menu_soundcloud, Color(0xFFFF5500)) { activateExpansion(4) },
+            DialItem("Web", "Mundo Web", R.drawable.ic_logo_mentat, Color(0xFF893471)) { scope.launch { homeViewModel.setWebMenuOpen(true); vibrator.vibrateClick() } }
         )
     }
 
-    // DIAL 2: CONTENIDO INTERNO (6 ÍTEMS)
     val itemsDial2 = remember {
         listOf(
-            DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) {
-                activateExpansion(0)
-            },
-            DialItem("DJSessions", "DJ Sessions", R.drawable.ic_sessions, Color(0xFF000000)) {
-                launchUrl(MentatConstants.URL_DJ_SESSIONS)
-            },
-            DialItem("Subs", "Suscriptores", Icons.Default.Lock, Color(0xFF000000)) {
-                showComingSoon()
-            },
-            DialItem("Archive", "Archivo", R.drawable.ic_menu_concept, Color(0xFF8A2BE2)) {
-                launchUrl(MentatConstants.URL_BLOG_OLD)
-            },
-            DialItem("Contact", "Contacto", R.drawable.ic_mail, Color(0xFF000000)) {
-                launchUrl("mailto:info@mentat-music.com")
-            },
-            DialItem("Live", "Directo", R.drawable.ic_live_music, Color(0xFF000000)) {
-                showComingSoon()
-            }
+            DialItem("GUZZ", "GUZZ", R.drawable.ic_menu_guzz, Color.White) { activateExpansion(0) },
+            DialItem("DJSessions", "DJ Sessions", R.drawable.ic_sessions, Color(0xFF000000)) { launchUrl(MentatConstants.URL_DJ_SESSIONS) },
+            DialItem("Subs", "Suscriptores", Icons.Default.Lock, Color(0xFF000000)) { showComingSoon() },
+            DialItem("Archive", "Archivo", R.drawable.ic_menu_concept, Color(0xFF8A2BE2)) { launchUrl(MentatConstants.URL_BLOG_OLD) },
+            DialItem("Contact", "Contacto", R.drawable.ic_mail, Color(0xFF000000)) { launchUrl("mailto:info@mentat-music.com") },
+            DialItem("Live", "Directo", R.drawable.ic_live_music, Color(0xFF000000)) { showComingSoon() }
         )
     }
 
-    // DIAL 3: MINI DIAL WEB (3 ÍTEMS)
     val itemsWebMenu = remember {
         listOf(
-            DialItem("Audio", "Tutoriales", R.drawable.ic_audio, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Audio")
-                homeViewModel.setSelectedWebCategory("Audio")
-                homeViewModel.setWebMenuOpen(false)
-                activateExpansion(-1)
-            },
-            DialItem("Divulgacion", "Ciencia", R.drawable.ic_divulgacion, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Divulgacion")
-                homeViewModel.setSelectedWebCategory("Divulgacion")
-                homeViewModel.setWebMenuOpen(false)
-                activateExpansion(-1)
-            },
-            DialItem("Blog", "Blog", R.drawable.ic_blog, Color(0xFF000000)) {
-                homeViewModel.filterByCategory("Blog")
-                homeViewModel.setSelectedWebCategory("Blog")
-                homeViewModel.setWebMenuOpen(false)
-                activateExpansion(-1)
-            }
+            DialItem("Audio", "Tutoriales", R.drawable.ic_audio, Color(0xFF000000)) { homeViewModel.filterByCategory("Audio"); homeViewModel.setSelectedWebCategory("Audio"); homeViewModel.setWebMenuOpen(false); activateExpansion(-1) },
+            DialItem("Divulgacion", "Ciencia", R.drawable.ic_divulgacion, Color(0xFF000000)) { homeViewModel.filterByCategory("Divulgacion"); homeViewModel.setSelectedWebCategory("Divulgacion"); homeViewModel.setWebMenuOpen(false); activateExpansion(-1) },
+            DialItem("Blog", "Blog", R.drawable.ic_blog, Color(0xFF000000)) { homeViewModel.filterByCategory("Blog"); homeViewModel.setSelectedWebCategory("Blog"); homeViewModel.setWebMenuOpen(false); activateExpansion(-1) }
         )
     }
 
     val currentItems = if (isMainDial) itemsDial1 else itemsDial2
 
-    // --- BACK HANDLER 1: Salir del Carrusel/Contenido ---
     BackHandler(enabled = isAnimatingOut || isExpansionFinished) {
         scope.launch {
-            // A) DETECTAMOS SI VENÍAMOS DE LA WEB
             val wasWebMode = selectedWebCategory != null
-
-            // B) RESETEAMOS ESTADOS VISUALES
             homeViewModel.updateIsExpansionFinished(false)
             homeViewModel.updateIsAnimatingOut(false)
-
-            // C) LIMPIAMOS LA SELECCIÓN
             homeViewModel.setSelectedWebCategory(null)
-
-            // --- CORRECCIÓN UX: REAPARICIÓN TEMPRANA ---
-            if (wasWebMode) {
-                launch {
-                    delay(300)
-                    homeViewModel.setWebMenuOpen(true)
-                }
-            }
-
-            // D) ANIMACIÓN DEL DIAL GRANDE
-            val impactTime = (TRANSITION_DURATION - 150).coerceAtLeast(0)
-            delay(impactTime.toLong())
-
-            dialScale.animateTo(
-                targetValue = 0.92f,
-                animationSpec = tween(120, easing = FastOutLinearInEasing)
-            )
-
-            dialScale.animateTo(
-                targetValue = 1.0f,
-                animationSpec = spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessVeryLow)
-            )
-
+            if (wasWebMode) launch { delay(300); homeViewModel.setWebMenuOpen(true) }
+            delay(200)
+            dialScale.animateTo(1.0f, spring(0.35f, Spring.StiffnessLow))
             homeViewModel.updateClickedIconIndex(-1)
             rotationAngle.snapTo(homeViewModel.rotationAngle.value)
         }
     }
-
-    // --- BACK HANDLER 2: Cerrar menú si no he entrado en nada ---
-    BackHandler(enabled = isWebMenuOpen) {
-        homeViewModel.setWebMenuOpen(false)
-    }
+    BackHandler(enabled = isWebMenuOpen) { homeViewModel.setWebMenuOpen(false) }
 
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // --- CAPA 1: FONDO ---
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             AttractorBackground(
                 modifier = Modifier.fillMaxSize(),
@@ -423,184 +318,49 @@ fun HomeScreen(
             VideoBackground(modifier = Modifier.fillMaxSize())
         }
 
+        // --- CONTENIDO LÓGICO ---
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            // AQUI ESTA LA DEFINICIÓN QUE FALTABA
             val isPortrait = maxWidth < maxHeight
 
-            // --- CONTENEDOR PRINCIPAL ---
+            // 2.A: DIAL QUE SE DESVANECE
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .alpha(dialSceneAlpha)
-                    // AQUÍ ESTÁ EL FIX DEL BLOQUEO: VIGILAMOS isWebMenuOpen
                     .pointerInput(clickedIconIndex, isAnimatingOut, isExpansionFinished, isWebMenuOpen) {
                         if (isAnimatingOut || isExpansionFinished || isWebMenuOpen) return@pointerInput
-                        var centerX = 0f
-                        var centerY = 0f
+                        var centerX = 0f; var centerY = 0f
                         detectDragGestures(
-                            onDragStart = {
-                                centerX = size.width / 2f
-                                centerY = size.height / 2f
-                                scope.launch { rotationAngle.stop() }
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val startAngle = atan2(change.previousPosition.y - centerY, change.previousPosition.x - centerX)
-                                val endAngle = atan2(change.position.y - centerY, change.position.x - centerX)
-                                scope.launch { rotationAngle.snapTo(rotationAngle.value + (endAngle - startAngle)) }
-                            },
-                            onDragEnd = {
-                                val currentOffset = rotationAngle.value - targetAngleRad
-                                val nearestIconIndex = -(currentOffset / angleStep).roundToInt()
-                                val targetSnapAngle = targetAngleRad - (angleStep * nearestIconIndex)
-                                scope.launch {
-                                    rotationAngle.animateTo(targetSnapAngle, spring(0.7f, 100f))
-                                    homeViewModel.updateRotationAngle(targetSnapAngle)
-                                }
-                            }
+                            onDragStart = { centerX = size.width / 2f; centerY = size.height / 2f; scope.launch { rotationAngle.stop() } },
+                            onDrag = { change, _ -> change.consume(); val startAngle = atan2(change.previousPosition.y - centerY, change.previousPosition.x - centerX); val endAngle = atan2(change.position.y - centerY, change.position.x - centerX); scope.launch { rotationAngle.snapTo(rotationAngle.value + (endAngle - startAngle)) } },
+                            onDragEnd = { val currentOffset = rotationAngle.value - targetAngleRad; val nearestIconIndex = -(currentOffset / angleStep).roundToInt(); val targetSnapAngle = targetAngleRad - (angleStep * nearestIconIndex); scope.launch { rotationAngle.animateTo(targetSnapAngle, spring(0.7f, 100f)); homeViewModel.updateRotationAngle(targetSnapAngle) } }
                         )
-                    },
-                contentAlignment = Alignment.Center
+                    }
             ) {
-                // TÍTULO
-                Text(
-                    text = stringResource(R.string.dial_title),
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 22.sp,
-                    fontFamily = verdanaFontFamily,
-                    fontWeight = FontWeight.Normal,
-                    modifier = Modifier
-                        .align(if (isPortrait) Alignment.TopCenter else Alignment.TopStart)
-                        .padding(32.dp)
-                )
+                Text(text = stringResource(R.string.dial_title), color = Color.White.copy(0.5f), fontSize = 22.sp, fontFamily = VerdanaFontFamily, modifier = Modifier.align(if (isPortrait) Alignment.TopCenter else Alignment.TopStart).padding(32.dp))
 
-                // BOTONES SUPERIORES
-                val context = LocalContext.current
-                // Leemos el estado de la vibración (Asegúrate de haber creado el archivo UserPreferences.kt antes)
-                var isVibrationOn by remember { mutableStateOf(mentat.music.com.mentapp.data.UserPreferences.isVibrationEnabled(context)) }
-
-                // 1. TOGGLE VIBRACIÓN (Arriba Izquierda)
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(24.dp) // Mismo padding que el botón de salir
-                        .size(48.dp)
-                        .clickable {
-                            val newState = !isVibrationOn
-                            isVibrationOn = newState
-                            mentat.music.com.mentapp.data.UserPreferences.setVibrationEnabled(context, newState)
-                            if (newState) vibrator.vibrateClick()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(id = if (isVibrationOn) R.drawable.ic_vibration_foreground else R.drawable.ic_vibration_no_foreground),
-                        contentDescription = "Vibración",
-                        tint =  Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-                Box(
-                    modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
-                        .clickable {
-                            vibrator.vibrateClick()
-                            val activity = context as? Activity
-                            if (activity != null) { activity.finishAndRemoveTask(); exitProcess(0) }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(painter = painterResource(id = R.drawable.ic_power), contentDescription = "Salir", colorFilter = ColorFilter.tint(Color.White.copy(alpha = 0.6f)), modifier = Modifier.size(28.dp))
-                }
-                Box(
-                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 35.dp, end = 80.dp)
-                        .clickable { homeViewModel.toggleLanguage(); vibrator.vibrateClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = buttonText, color = Color.White.copy(alpha = 0.6f), fontSize = 20.sp, fontFamily = verdanaFontFamily, fontWeight = FontWeight.Bold)
-                }
-                // 4. BOTÓN BACK INTELIGENTE (Abajo Derecha)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(32.dp)
-                        .size(48.dp)
-                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                        .clickable {
-                            vibrator.vibrateClick()
-                            val activity = context as? Activity
-
-                            // --- LÓGICA DE NAVEGACIÓN ---
-                            // Asumo que 'clickedIconIndex' es la variable que dice si hay un dial abierto.
-                            // Si es -1 (o null), estamos en el menú principal.
-                            // Si es 0, 1, 2... estamos viendo Cards.
-
-                            if (clickedIconIndex != -1) {
-                                // CASO 1: Estamos viendo CARDS -> VOLVER A DIALS
-                                // Llamamos a la misma función que usas para resetear la vista
-                                homeViewModel.onIconClicked(-1)
-
-                                // Opcional: Si tienes animaciones manuales, lánzalas aquí.
-                                // scope.launch { ... }
-                            } else {
-                                // CASO 2: Estamos en DIALS (Principal) -> MINIMIZAR/SALIR
-                                activity?.onBackPressed()
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                // =========================================================
-                // INICIO DEL SÁNDWICH DE CAPAS (LA SOLUCIÓN VISUAL)
-                // =========================================================
-
-                // CAPA A: EL DIAL GRANDE (FONDO)
-                // Se escala y se desenfoca cuando gira la moneda
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scale(dialScale.value) // <--- ESTE SE ENCOGE
+                    modifier = Modifier.fillMaxSize()
+                        .scale(dialScale.value)
                         .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
-                        .graphicsLayer {
-                            scaleX = dialScale.value * dialFlipX.value
-                            scaleY = dialScale.value
-                        },
+                        .graphicsLayer { scaleX = dialScale.value * dialFlipX.value; scaleY = dialScale.value },
                     contentAlignment = Alignment.Center
                 ) {
-                    // 1. Círculos de fondo
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val gradientColors = listOf(
-                            Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.4f),
-                            Color.Gray.copy(alpha = 0.6f), Color.White.copy(alpha = 0.4f),
-                            Color.White.copy(alpha = 0.95f)
-                        )
-                        val brush = Brush.sweepGradient(colors = gradientColors, center = this.center)
-                        drawCircle(brush = brush, radius = radiusPx, style = Stroke(width = thicknessPx))
-                        drawCircle(color = Color.White.copy(alpha = 0.8f), radius = radiusPx - (thicknessPx / 2), style = Stroke(width = 1.5.dp.toPx()))
-                        drawCircle(color = Color.White.copy(alpha = 0.5f), radius = radiusPx + (thicknessPx / 2), style = Stroke(width = 2.dp.toPx()))
+                    Canvas(Modifier.fillMaxSize()) {
+                        val brush = Brush.sweepGradient(listOf(Color.White.copy(0.95f), Color.White.copy(0.4f), Color.Gray.copy(0.6f), Color.White.copy(0.4f), Color.White.copy(0.95f)), center = center)
+                        drawCircle(brush, radiusPx, style = Stroke(thicknessPx))
+                        drawCircle(Color.White.copy(0.8f), radiusPx - (thicknessPx / 2), style = Stroke(1.5.dp.toPx()))
+                        drawCircle(Color.White.copy(0.5f), radiusPx + (thicknessPx / 2), style = Stroke(2.dp.toPx()))
                     }
-
-                    // 2. Flechas indicadoras
-                    Row(
-                        modifier = Modifier.align(Alignment.Center).offset(y = arrowsYOffset).alpha(arrowsAlpha),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Image(painter = painterResource(id = R.drawable.outline_line_start_arrow_notch_24), contentDescription = null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
+                    Row(Modifier.align(Alignment.Center).offset(y = arrowsYOffset).alpha(arrowsAlpha)) {
+                        Image(painterResource(R.drawable.outline_line_start_arrow_notch_24), null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(80.dp))
-                        Image(painter = painterResource(id = R.drawable.outline_line_end_arrow_notch_24), contentDescription = null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
+                        Image(painterResource(R.drawable.outline_line_end_arrow_notch_24), null, colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(24.dp))
                     }
 
-                    // 3. LA RUEDA (CircularDialLayout)
                     CircularDialLayout(
                         modifier = Modifier.fillMaxSize(),
                         items = currentItems,
@@ -611,302 +371,117 @@ fun HomeScreen(
                         isExpansionFinished = isExpansionFinished
                     )
                 }
+            }
 
-                // CAPA B: EL DIMMER (OSCURIDAD)
-                // ESTE ES EL TRUCO: Está FUERA del scale, así que siempre cubre toda la pantalla.
-                val dimmerAlpha by animateFloatAsState(
-                    targetValue = if (isWebMenuOpen) 0.6f else 0f,
-                    animationSpec = tween(300),
-                    label = "dimmerAlpha"
+            // 2.B: DIMMER Y MINI DIAL
+            val dimmerAlpha by animateFloatAsState(
+                targetValue = if (isWebMenuOpen) 0.6f else 0f,
+                label = "dimmerAlpha"
+            )
+            if (isWebMenuOpen || dimmerAlpha > 0f) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(dimmerAlpha)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { homeViewModel.setWebMenuOpen(false) })
+            }
+
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .scale(dialScale.value)
+                    .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
+                    .graphicsLayer { scaleX = dialScale.value * dialFlipX.value; scaleY = dialScale.value },
+                contentAlignment = Alignment.Center
+            ) {
+                val miniDialScale by animateFloatAsState(
+                    targetValue = if (isWebMenuOpen) 1f else 0f,
+                    animationSpec = spring(0.6f, 200f),
+                    label = "miniDialScale"
                 )
 
-                if (isWebMenuOpen || dimmerAlpha > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = dimmerAlpha))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                homeViewModel.setWebMenuOpen(false)
-                            }
-                    )
-                }
-
-                // CAPA C: MINI DIAL Y BOTÓN CENTRAL
-                // Estos SÍ se escalan para acompañar al Dial Grande en el rebote
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scale(dialScale.value) // <--- ESTE SE ENCOGE TAMBIÉN
-                        .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
-                        .graphicsLayer {
-                            scaleX = dialScale.value * dialFlipX.value
-                            scaleY = dialScale.value
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // A) EL MINI DIAL (SATÉLITES)
-                    val miniDialScale by animateFloatAsState(
-                        targetValue = if (isWebMenuOpen) 1f else 0f,
-                        animationSpec = spring(dampingRatio = 0.6f, stiffness = 200f),
-                        label = "miniDialScale"
-                    )
-
-                    val miniRadius = 95.dp
-                    val miniThickness = 55.dp
-                    val miniRadiusPx = with(LocalDensity.current) { miniRadius.toPx() }
-                    val miniThicknessPx = with(LocalDensity.current) { miniThickness.toPx() }
-
-                    if (isWebMenuOpen || miniDialScale > 0.1f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset(y = 140.dp)
-                                .scale(miniDialScale),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            // 1. EL FONDO DE CRISTAL
-                            Canvas(modifier = Modifier.size((miniRadius * 2) + miniThickness)) {
-                                val gradientColors = listOf(
-                                    Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.2f),
-                                    Color.Gray.copy(alpha = 0.5f), Color.White.copy(alpha = 0.2f),
-                                    Color.White.copy(alpha = 0.95f)
+                if (isWebMenuOpen || miniDialScale > 0.1f) {
+                    Box(Modifier.fillMaxSize().offset(y = 140.dp).scale(miniDialScale), Alignment.Center) {
+                        Canvas(Modifier.size(245.dp)) {
+                            val brush = Brush.sweepGradient(listOf(Color.White.copy(0.95f), Color.White.copy(0.2f), Color.Gray.copy(0.5f), Color.White.copy(0.2f), Color.White.copy(0.95f)), center = center)
+                            drawCircle(brush, with(drawContext.density) { 95.dp.toPx() }, style = Stroke(with(drawContext.density) { 55.dp.toPx() }))
+                        }
+                        CompositionLocalProvider(LocalContentColor provides Color(0xFF893471)) {
+                            Box(Modifier.fillMaxSize().pointerInput(Unit) {
+                                val stepRad = (2 * Math.PI / 3).toFloat()
+                                detectDragGestures(
+                                    onDragStart = { scope.launch { webMenuRotationAnim.stop() } },
+                                    onDrag = { change, dragAmount -> change.consume(); scope.launch { webMenuRotationAnim.snapTo(webMenuRotationAnim.value + ((dragAmount.x / 350) * -1f)) } },
+                                    onDragEnd = { val steps = (webMenuRotationAnim.value / stepRad).roundToInt(); scope.launch { webMenuRotationAnim.animateTo(steps * stepRad, spring(0.6f, 300f)); homeViewModel.updateWebMenuRotationAngle(steps * stepRad) } }
                                 )
-                                val brush = Brush.sweepGradient(colors = gradientColors, center = this.center)
-                                drawCircle(brush = brush, radius = miniRadiusPx, style = Stroke(width = miniThicknessPx))
-                                drawCircle(color = Color.White.copy(alpha = 0.6f), radius = miniRadiusPx - (miniThicknessPx / 2), style = Stroke(width = 1.dp.toPx()))
-                                drawCircle(color = Color.White.copy(alpha = 0.3f), radius = miniRadiusPx + (miniThicknessPx / 2), style = Stroke(width = 1.dp.toPx()))
-                            }
-
-                            // 2. LOS ICONOS Y EL GESTO
-                            // TRUCO SIMPLE: Definimos el "ContentColor" local como MORADO.
-                            // El Ripple usará este color.
-                            CompositionLocalProvider(LocalContentColor provides Color(0xFF893471)) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .pointerInput(Unit) {
-                                            val stepRad = (2 * Math.PI / 3).toFloat()
-                                            val targetBase = 0f
-
-                                            detectDragGestures(
-                                                onDragStart = {
-                                                    scope.launch { webMenuRotationAnim.stop() }
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    val rotationChange = (dragAmount.x / 350) * -1f
-                                                    scope.launch {
-                                                        webMenuRotationAnim.snapTo(webMenuRotationAnim.value + rotationChange)
-                                                    }
-                                                },
-                                                onDragEnd = {
-                                                    val currentRot = webMenuRotationAnim.value
-                                                    val relativeRot = currentRot - targetBase
-                                                    val steps = (relativeRot / stepRad).roundToInt()
-                                                    val targetSnapAngle = (steps * stepRad) + targetBase
-
-                                                    scope.launch {
-                                                        webMenuRotationAnim.animateTo(
-                                                            targetValue = targetSnapAngle,
-                                                            animationSpec = spring(dampingRatio = 0.6f, stiffness = 300f)
-                                                        )
-                                                        homeViewModel.updateWebMenuRotationAngle(targetSnapAngle)
-                                                    }
-                                                }
-                                            )
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-
-
-                                    // 2. LA FÓRMULA MAESTRA
-                                    // Dividimos el ancho total entre 3.3 (ajustable).
-                                    // - Si el móvil mide 400dp -> Radio = 121dp
-                                    // - Si el móvil mide 360dp (pequeño) -> Radio = 109dp
-                                    // ¡Se adapta solo!
-                                    val dynamicRadius = screenWidth / 3.5f
-
-                                    // 3. LLAMADA AL COMPONENTE
-                                    MiniCircularDialLayout(
-                                        modifier = Modifier.fillMaxSize(),
-                                        items = itemsWebMenu,
-                                        currentRotation = webMenuRotationAnim.value,
-                                        radius = miniRadius
-                                    )
-
-                                }
-                            }
-
-                            // 3. EL INTERRUPTOR (CON EFECTO RADAR)
-                            val infiniteTransition = rememberInfiniteTransition(label = "radar")
-                            val radarScale by infiniteTransition.animateFloat(
-                                initialValue = 1.0f, targetValue = 1.4f,
-                                animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart), label = "scale"
-                            )
-                            val radarAlpha by infiniteTransition.animateFloat(
-                                initialValue = 0.5f, targetValue = 0.0f,
-                                animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart), label = "alpha"
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .size(60.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        homeViewModel.setWebMenuOpen(false)
-                                        vibrator.vibrateClick()
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    drawCircle(
-                                        color = Color.White.copy(alpha = radarAlpha),
-                                        radius = (size.minDimension / 2) * 0.6f * radarScale,
-                                        style = Stroke(width = 2.dp.toPx())
-                                    )
-                                }
-                                Image(
-                                    painter = painterResource(id = R.drawable.ic_web_foreground),
-                                    contentDescription = "Cerrar",
-                                    colorFilter = ColorFilter.tint(Color.Black),
-                                    modifier = Modifier.size(32.dp)
+                            }, Alignment.Center) {
+                                MiniCircularDialLayout(
+                                    modifier = Modifier.fillMaxSize(),
+                                    items = itemsWebMenu,
+                                    currentRotation = webMenuRotationAnim.value,
+                                    radius = 95.dp
                                 )
                             }
                         }
-                    }
-
-                    // B) EL BOTÓN CENTRAL (Y SU ESCUDO)
-                    if (!isAnimatingOut && !isExpansionFinished) {
-                        // El botón visual
-                        SolarisPlayButton(
-                            size = 80.dp,
-                            onClick = {
-                                scope.launch {
-                                    launch { dialFlipX.animateTo(0.0f, tween(250, easing = FastOutLinearInEasing)) }
-                                    launch { dialBlur.animateTo(10f, tween(250, easing = LinearEasing)) }
-                                    delay(250)
-                                    isMainDial = !isMainDial
-                                    vibrator.vibrateClick()
-                                    launch { dialFlipX.animateTo(1.0f, spring(0.7f, Spring.StiffnessMediumLow)) }
-                                    launch { dialBlur.animateTo(0f, tween(300, easing = FastOutSlowInEasing)) }
-                                    launch {
-                                        dialScale.snapTo(1.15f)
-                                        dialScale.animateTo(1.0f, animationSpec = bounceSpec)
-                                    }
-                                }
-                            }
-                        )
-
-                        // Escudo antimagia (si el menú está abierto)
-                        if (isWebMenuOpen) {
-                            Box(
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {})
-                            )
+                        Box(Modifier.size(60.dp).clip(RoundedCornerShape(50)).clickable { homeViewModel.setWebMenuOpen(false); vibrator.vibrateClick() }, Alignment.Center) {
+                            Image(painterResource(R.drawable.ic_web_foreground), "Cerrar", colorFilter = ColorFilter.tint(Color.Black), modifier = Modifier.size(32.dp))
                         }
                     }
                 }
-            }
 
-            // --- CAPA CARRUSEL (RESULTADOS) ---
-            val appData: AppData? = remember(appState) {
-                when (val state = appState) {
-                    is AppState.Success -> state.data
-                    is AppState.Loading -> null
-                    is AppState.Error -> { Log.e("Home", "Error: ${state.message}"); null }
+                if (!isAnimatingOut && !isExpansionFinished) {
+                    // --- CORRECCIÓN 2: Argumentos Nombrados para SolarisPlayButton ---
+                    SolarisPlayButton(
+                        size = 80.dp,
+                        onClick = {
+                            scope.launch {
+                                launch { dialFlipX.animateTo(0.0f, tween(250)); dialBlur.animateTo(10f, tween(250)) }
+                                delay(250)
+                                isMainDial = !isMainDial
+                                vibrator.vibrateClick()
+                                launch { dialFlipX.animateTo(1.0f, spring(0.7f)); dialBlur.animateTo(0f, tween(300)) }
+                                launch { dialScale.snapTo(1.15f); dialScale.animateTo(1.0f, bounceSpec) }
+                            }
+                        }
+                    )
+
+                    if (isWebMenuOpen) Box(Modifier.size(80.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}))
                 }
             }
 
-            // 1. Lógica de ID: Si hay selección Web, úsala. Si no, usa el Dial normal.
-            val clickedItemId = selectedWebCategory ?: if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
-                currentItems[clickedIconIndex].id else null
-
+            // 2.C: CARRUSEL
+            val appData: AppData? = remember(appState) { (appState as? AppState.Success)?.data }
+            val clickedItemId = selectedWebCategory ?: if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size) currentItems[clickedIconIndex].id else null
             var carouselData: List<CarouselItem>? = null
             var conceptDataAsCarousel: List<CarouselItem>? = null
-
             if (appData != null && clickedItemId != null) {
                 when (clickedItemId) {
                     "GUZZ" -> carouselData = appData.GUZZ
                     "Spotify" -> carouselData = appData.Spotify
                     "Bandcamp" -> carouselData = appData.Bandcamp
                     "SoundCloud" -> carouselData = appData.Soundcloud
-                    "YouTube" -> {
-                        carouselData = appData.YouTube?.map { item ->
-                            item.copy(imageUrl = "https://img.youtube.com/vi/${item.imageUrl}/0.jpg")
-                        }
-                    }
-                    "Audio", "Divulgacion", "Blog" -> {
-                        conceptDataAsCarousel = newsPosts.map { entity ->
-                            val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-                                .replace("\uFFFC", "").replace("\n", " ").trim()
-                            val snippet = plainText
-
-                            CarouselItem(
-                                title = entity.title,
-                                imageUrl = entity.imageUrl,
-                                targetUrl = entity.targetUrl,
-                                artist = snippet
-                            )
-                        }
-                    }
+                    "YouTube" -> carouselData = appData.YouTube?.map { it.copy(imageUrl = "https://img.youtube.com/vi/${it.imageUrl}/0.jpg") }
+                    "Audio", "Divulgacion", "Blog" -> conceptDataAsCarousel = newsPosts.map { CarouselItem(it.title, it.imageUrl, it.targetUrl, android.text.Html.fromHtml(it.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "").replace("\n", " ").trim()) }
                 }
             }
 
-            val carouselLayerTargetAlpha = when {
-                isExpansionFinished && (appState is AppState.Loading || carouselData != null || conceptDataAsCarousel != null) -> 1f
-                else -> 0f
-            }
+            // --- CORRECCIÓN 3: label explícito ---
+            val carouselLayerTargetAlpha = when { isExpansionFinished && (appState is AppState.Loading || carouselData != null || conceptDataAsCarousel != null) -> 1f else -> 0f }
             val carouselLayerAnimatedAlpha by animateFloatAsState(
                 targetValue = carouselLayerTargetAlpha,
-                animationSpec = tween(durationMillis = TRANSITION_DURATION),
+                animationSpec = tween(TRANSITION_DURATION),
                 label = "carouselLayerAlpha"
             )
 
-            val brandColor = if (selectedWebCategory != null) Color.Black else (
-                    if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size)
-                        currentItems[clickedIconIndex].color else Color.Transparent
-                    )
-
+            val brandColor = if (selectedWebCategory != null) Color.Black else (if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size) currentItems[clickedIconIndex].color else Color.Transparent)
             val isConceptMode = (clickedItemId in listOf("Audio", "Divulgacion", "Blog"))
-
-            val carouselBoxModifier = if (isPortrait) {
-                if (isConceptMode) Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f)
-                else Modifier.fillMaxWidth(0.9f).aspectRatio(1f)
-            } else {
-                if (isConceptMode) Modifier.fillMaxHeight(0.9f).fillMaxWidth(0.7f)
-                else Modifier.fillMaxHeight(0.9f).aspectRatio(1f)
-            }
+            val carouselBoxModifier = if (isPortrait) { if (isConceptMode) Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f) else Modifier.fillMaxWidth(0.9f).aspectRatio(1f) } else { if (isConceptMode) Modifier.fillMaxHeight(0.9f).fillMaxWidth(0.7f) else Modifier.fillMaxHeight(0.9f).aspectRatio(1f) }
 
             if (isExpansionFinished) {
-                Box(
-                    modifier = Modifier
-                        .alpha(carouselLayerAnimatedAlpha)
-                        .then(carouselBoxModifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(32.dp))
-                            .background(Brush.linearGradient(listOf(brandColor.copy(alpha = 0.6f), brandColor.copy(alpha = 0.3f))))
-                            .border(3.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.9f), Color.Gray.copy(alpha = 0.3f), Color.White.copy(alpha = 0.9f))), RoundedCornerShape(32.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                Box(Modifier.alpha(carouselLayerAnimatedAlpha).then(carouselBoxModifier), Alignment.Center) {
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(32.dp)).background(Brush.linearGradient(listOf(brandColor.copy(0.6f), brandColor.copy(0.3f)))).border(3.dp, Brush.linearGradient(listOf(Color.White.copy(0.9f), Color.Gray.copy(0.3f), Color.White.copy(0.9f))), RoundedCornerShape(32.dp)), Alignment.Center) {
                         val itemsToShow = carouselData ?: conceptDataAsCarousel
                         val safeInitialPage = if (itemsToShow.isNullOrEmpty()) 0 else currentPage
-                        val itemSize = itemsToShow?.size ?: 0
-
                         if (itemsToShow != null) {
-                            key(safeInitialPage to itemSize) {
+                            key(safeInitialPage to itemsToShow.size) {
+                                // --- CORRECCIÓN 4: Argumentos Nombrados para AlbumCarouselBox ---
                                 AlbumCarouselBox(
+                                    modifier = Modifier.fillMaxSize(),
                                     items = itemsToShow,
                                     navController = navController,
                                     isConceptMode = isConceptMode,
@@ -915,13 +490,110 @@ fun HomeScreen(
                                 )
                             }
                         } else if (appState is AppState.Loading) {
-                            CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f), strokeWidth = 3.dp)
+                            CircularProgressIndicator(color = Color.White.copy(0.7f))
                         } else if (appState is AppState.Error) {
-                            Text("Error cargar datos.", color = Color.White, textAlign = TextAlign.Center, fontFamily = verdanaFontFamily)
+                            Text("Error cargar datos.", color = Color.White, fontFamily = VerdanaFontFamily)
                         }
                     }
                 }
             }
+        } // FIN BOX LOGICO
+
+        // =================================================================
+        // CAPA 3: HUD (BOTONES ENCIMA DE TODO - zIndex: 100f)
+        // =================================================================
+        val context = LocalContext.current
+        var isVibrationOn by remember { mutableStateOf(mentat.music.com.mentapp.data.UserPreferences.isVibrationEnabled(context)) }
+
+        // VIBRACIÓN
+        Box(
+            modifier = Modifier.align(Alignment.TopStart).padding(24.dp).size(48.dp).zIndex(100f).clickable {
+                val newState = !isVibrationOn; isVibrationOn = newState
+                mentat.music.com.mentapp.data.UserPreferences.setVibrationEnabled(context, newState)
+                if (newState) vibrator.vibrateClick()
+            },
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(id = if (isVibrationOn) R.drawable.ic_vibration_foreground else R.drawable.ic_vibration_no_foreground),
+                contentDescription = "Vibración",
+                tint = Color.White.copy(0.5f),
+                modifier = Modifier.size(48.dp)
+            )
+        }
+
+        // SALIR
+        Box(
+            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp).zIndex(100f).clickable {
+                vibrator.vibrateClick()
+                val activity = context as? Activity
+                if (activity != null) { activity.finishAndRemoveTask(); exitProcess(0) }
+            },
+            contentAlignment = Alignment.Center
+        ) {
+            Image(painter = painterResource(id = R.drawable.ic_power), contentDescription = "Salir", colorFilter = ColorFilter.tint(Color.White.copy(0.6f)), modifier = Modifier.size(28.dp))
+        }
+
+        // IDIOMA
+        Box(
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 35.dp, end = 80.dp).zIndex(100f).clickable { homeViewModel.toggleLanguage(); vibrator.vibrateClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = buttonText, color = Color.White.copy(0.6f), fontSize = 20.sp, fontFamily = VerdanaFontFamily, fontWeight = FontWeight.Bold)
+        }
+
+        // 4. BOTÓN BACK (Cerebro Mejorado)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(32.dp)
+                .size(48.dp)
+                .zIndex(100f)
+                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                .clickable {
+                    vibrator.vibrateClick()
+                    val activity = context as? Activity
+
+                    // CASO 1: ¿Estamos viendo contenido (Cartas)?
+                    // Usamos isExpansionFinished que es la variable visual "final"
+                    if (isExpansionFinished || clickedIconIndex != -1 || selectedWebCategory != null) {
+
+                        // Detectamos si veníamos del mundo Web para reabrir el menú luego
+                        val wasWebMode = selectedWebCategory != null
+
+                        // 1. Iniciamos el cierre visual
+                        homeViewModel.updateIsExpansionFinished(false)
+                        homeViewModel.updateIsAnimatingOut(false)
+
+                        // 2. Limpiamos datos
+                        homeViewModel.setSelectedWebCategory(null)
+                        homeViewModel.onIconClicked(-1) // Esto resetea clickedIconIndex a -1
+
+                        // 3. Truco UX: Si era web, reabrimos el menú satélite suavemente
+                        if (wasWebMode) {
+                            scope.launch {
+                                delay(300)
+                                homeViewModel.setWebMenuOpen(true)
+                            }
+                        }
+                    }
+                    // CASO 2: ¿Están los satélites web abiertos?
+                    else if (isWebMenuOpen) {
+                        homeViewModel.setWebMenuOpen(false)
+                    }
+                    // CASO 3: Estamos en el inicio absoluto -> Salir
+                    else {
+                        activity?.onBackPressed()
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Volver",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
