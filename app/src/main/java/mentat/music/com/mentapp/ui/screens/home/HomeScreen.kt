@@ -41,9 +41,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -156,6 +160,8 @@ fun HomeScreen(
     val uriHandler = LocalUriHandler.current
     val dialScale = remember { Animatable(1.0f) }
     val vibrator = rememberVibrator()
+
+
 
     // --- SNAP PARA 6 ICONOS (DIAL GRANDE) ---
     val angleStep = (2 * Math.PI.toFloat() / 6)
@@ -472,6 +478,31 @@ fun HomeScreen(
                 )
 
                 // BOTONES SUPERIORES
+                val context = LocalContext.current
+                // Leemos el estado de la vibración (Asegúrate de haber creado el archivo UserPreferences.kt antes)
+                var isVibrationOn by remember { mutableStateOf(mentat.music.com.mentapp.data.UserPreferences.isVibrationEnabled(context)) }
+
+                // 1. TOGGLE VIBRACIÓN (Arriba Izquierda)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(24.dp) // Mismo padding que el botón de salir
+                        .size(48.dp)
+                        .clickable {
+                            val newState = !isVibrationOn
+                            isVibrationOn = newState
+                            mentat.music.com.mentapp.data.UserPreferences.setVibrationEnabled(context, newState)
+                            if (newState) vibrator.vibrateClick()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(id = if (isVibrationOn) R.drawable.ic_vibration_foreground else R.drawable.ic_vibration_no_foreground),
+                        contentDescription = "Vibración",
+                        tint =  Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
                 Box(
                     modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp)
                         .clickable {
@@ -489,6 +520,43 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = buttonText, color = Color.White.copy(alpha = 0.6f), fontSize = 20.sp, fontFamily = verdanaFontFamily, fontWeight = FontWeight.Bold)
+                }
+                // 4. BOTÓN BACK INTELIGENTE (Abajo Derecha)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(32.dp)
+                        .size(48.dp)
+                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                        .clickable {
+                            vibrator.vibrateClick()
+                            val activity = context as? Activity
+
+                            // --- LÓGICA DE NAVEGACIÓN ---
+                            // Asumo que 'clickedIconIndex' es la variable que dice si hay un dial abierto.
+                            // Si es -1 (o null), estamos en el menú principal.
+                            // Si es 0, 1, 2... estamos viendo Cards.
+
+                            if (clickedIconIndex != -1) {
+                                // CASO 1: Estamos viendo CARDS -> VOLVER A DIALS
+                                // Llamamos a la misma función que usas para resetear la vista
+                                homeViewModel.onIconClicked(-1)
+
+                                // Opcional: Si tienes animaciones manuales, lánzalas aquí.
+                                // scope.launch { ... }
+                            } else {
+                                // CASO 2: Estamos en DIALS (Principal) -> MINIMIZAR/SALIR
+                                activity?.onBackPressed()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
 
                 // =========================================================

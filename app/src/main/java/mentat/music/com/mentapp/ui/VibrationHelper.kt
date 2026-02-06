@@ -8,12 +8,14 @@ import android.os.VibratorManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+// Asegúrate de importar donde hayas puesto el archivo UserPreferences
+import mentat.music.com.mentapp.data.UserPreferences
 
 /**
  * El "Especialista en Temblores".
- * Centraliza toda la lógica de vibración para tener control total.
+ * Ahora es inteligente: consulta las preferencias del usuario antes de actuar.
  */
-class VibrationHelper(context: Context) {
+class VibrationHelper(private val context: Context) { // <--- AHORA ES 'private val'
 
     private val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
@@ -24,16 +26,17 @@ class VibrationHelper(context: Context) {
     }
 
     /**
-     * EL "PUM": Golpe seco, pesado y autoritario.
-     * Para confirmar acciones (Clics, Entradas).
+     * EL "PUM": Golpe seco para clics.
      */
     fun vibrateClick() {
+        // 1. EL FILTRO: Si el usuario dijo NO, no hacemos nada.
+        if (!UserPreferences.isVibrationEnabled(context)) return
+
+        // 2. LA ACCIÓN
         if (vibrator.hasVibrator()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // 80ms de duración, 255 de potencia (MÁXIMA)
                 vibrator.vibrate(VibrationEffect.createOneShot(80, 255))
             } else {
-                // Fallback para móviles muy viejos
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(80)
             }
@@ -41,14 +44,15 @@ class VibrationHelper(context: Context) {
     }
 
     /**
-     * EL "TICK": Golpe metálico, corto y preciso.
-     * Para el giro del dial o paso de cartas.
+     * EL "TICK": Golpe metálico para el dial.
      */
     fun vibrateTick() {
+        // 1. EL FILTRO
+        if (!UserPreferences.isVibrationEnabled(context)) return
+
+        // 2. LA ACCIÓN
         if (vibrator.hasVibrator()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // 15ms de duración, 100 de potencia (MEDIA-BAJA)
-                // Lo suficientemente corto para sentirse "mecánico"
                 vibrator.vibrate(VibrationEffect.createOneShot(15, 100))
             } else {
                 @Suppress("DEPRECATION")
@@ -60,7 +64,6 @@ class VibrationHelper(context: Context) {
 
 /**
  * Función "fábrica" para usarlo fácilmente en Compose.
- * Solo tienes que llamar a `val vibrator = rememberVibrator()`
  */
 @Composable
 fun rememberVibrator(): VibrationHelper {

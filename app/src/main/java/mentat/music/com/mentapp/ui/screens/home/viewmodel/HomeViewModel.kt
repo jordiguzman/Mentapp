@@ -50,6 +50,8 @@ class HomeViewModel(
     enum class Language { ES, EN }
     private val _currentLanguage = MutableStateFlow(Language.ES)
     val currentLanguage: StateFlow<Language> = _currentLanguage.asStateFlow()
+    private val _clickedIconIndex = MutableStateFlow(-1)
+
 
     fun toggleLanguage() {
         _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
@@ -191,4 +193,13 @@ class HomeViewModel(
     private val _selectedWebCategory = MutableStateFlow<String?>(null)
     val selectedWebCategory: StateFlow<String?> = _selectedWebCategory.asStateFlow()
     fun setSelectedWebCategory(category: String?) { _selectedWebCategory.value = category }
+    // ... tus otras variables ...
+
+    // Esta función recibe el índice (-1 para cerrar, 0, 1, 2 para abrir)
+    fun onIconClicked(index: Int) {
+        _clickedIconIndex.value = index
+
+        // OPCIONAL: Si al volver atrás quieres que el dial se mueva o haga algo,
+        // puedes meter lógica aquí. Por ahora, con cambiar el valor basta.
+    }
 }

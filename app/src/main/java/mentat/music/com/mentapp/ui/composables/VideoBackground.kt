@@ -23,7 +23,7 @@ fun VideoBackground(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val remoteVideoUrl = "https://mentat-music.com/mentapp_server/fondo_video.mp4"
+    val remoteVideoUrl = "https://mentat-music.com/mentapp_server/fondo_b_n.mp4"
 
     // 1. Creamos el EXOPLAYER (El cerebro)
     val exoPlayer = remember {
