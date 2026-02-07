@@ -114,7 +114,6 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 
-// Mantenemos la fuente pública y global
 val VerdanaFontFamily = FontFamily(
     Font(R.font.verdana_regular, FontWeight.Normal),
     Font(R.font.verdana_italic, FontWeight.Normal, FontStyle.Italic),
@@ -135,12 +134,10 @@ fun HomeScreen(
     val isExpansionFinished by homeViewModel.isExpansionFinished.collectAsState()
     val newsPosts by homeViewModel.newsPosts.collectAsState()
 
-    // --- ESTADOS MINI DIAL ---
     val isWebMenuOpen by homeViewModel.isWebMenuOpen.collectAsState()
     val webMenuRotationAngle by homeViewModel.webMenuRotationAngle.collectAsState()
     val webMenuRotationAnim = remember { Animatable(0f) }
 
-    // VARIABLE PARA EFECTO FLIP
     val dialFlipX = remember { Animatable(1f, Float.VectorConverter) }
     val dialBlur = remember { Animatable(0f) }
 
@@ -194,7 +191,6 @@ fun HomeScreen(
         }
     }
 
-    // --- CORRECCIÓN 1: Argumentos nombrados en animateFloatAsState con label explícito ---
     val dialSceneAlpha by animateFloatAsState(
         targetValue = if (isExpansionFinished) 0f else 1f,
         animationSpec = tween(TRANSITION_DURATION),
@@ -318,7 +314,6 @@ fun HomeScreen(
             VideoBackground(modifier = Modifier.fillMaxSize())
         }
 
-        // --- CONTENIDO LÓGICO ---
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -425,7 +420,6 @@ fun HomeScreen(
                 }
 
                 if (!isAnimatingOut && !isExpansionFinished) {
-                    // --- CORRECCIÓN 2: Argumentos Nombrados para SolarisPlayButton ---
                     SolarisPlayButton(
                         size = 80.dp,
                         onClick = {
@@ -456,11 +450,22 @@ fun HomeScreen(
                     "Bandcamp" -> carouselData = appData.Bandcamp
                     "SoundCloud" -> carouselData = appData.Soundcloud
                     "YouTube" -> carouselData = appData.YouTube?.map { it.copy(imageUrl = "https://img.youtube.com/vi/${it.imageUrl}/0.jpg") }
-                    "Audio", "Divulgacion", "Blog" -> conceptDataAsCarousel = newsPosts.map { CarouselItem(it.title, it.imageUrl, it.targetUrl, android.text.Html.fromHtml(it.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "").replace("\n", " ").trim()) }
+
+                    // --- CORRECCIÓN CRÍTICA: MAPEO CON NOMBRES EXPLÍCITOS ---
+                    "Audio", "Divulgacion", "Blog" -> {
+                        conceptDataAsCarousel = newsPosts.map { entity ->
+                            val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "").replace("\n", " ").trim()
+                            CarouselItem(
+                                title = entity.title,       // Título -> Título
+                                imageUrl = entity.imageUrl, // Imagen -> Imagen
+                                targetUrl = entity.targetUrl,
+                                artist = plainText          // Texto -> Artista/Texto
+                            )
+                        }
+                    }
                 }
             }
 
-            // --- CORRECCIÓN 3: label explícito ---
             val carouselLayerTargetAlpha = when { isExpansionFinished && (appState is AppState.Loading || carouselData != null || conceptDataAsCarousel != null) -> 1f else -> 0f }
             val carouselLayerAnimatedAlpha by animateFloatAsState(
                 targetValue = carouselLayerTargetAlpha,
@@ -479,9 +484,8 @@ fun HomeScreen(
                         val safeInitialPage = if (itemsToShow.isNullOrEmpty()) 0 else currentPage
                         if (itemsToShow != null) {
                             key(safeInitialPage to itemsToShow.size) {
-                                // --- CORRECCIÓN 4: Argumentos Nombrados para AlbumCarouselBox ---
                                 AlbumCarouselBox(
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier, // <--- SIN fillMaxSize() PARA QUE NO REVIENTE EL LAYOUT
                                     items = itemsToShow,
                                     navController = navController,
                                     isConceptMode = isConceptMode,
@@ -542,58 +546,35 @@ fun HomeScreen(
             Text(text = buttonText, color = Color.White.copy(0.6f), fontSize = 20.sp, fontFamily = VerdanaFontFamily, fontWeight = FontWeight.Bold)
         }
 
-        // 4. BOTÓN BACK (Cerebro Mejorado)
+        // BACK (CON LÓGICA INTELIGENTE)
         Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(32.dp)
-                .size(48.dp)
-                .zIndex(100f)
-                .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                .clickable {
-                    vibrator.vibrateClick()
-                    val activity = context as? Activity
+            modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp).size(48.dp).zIndex(100f).background(Color.Black.copy(0.3f), CircleShape).clickable {
+                vibrator.vibrateClick()
+                val activity = context as? Activity
 
-                    // CASO 1: ¿Estamos viendo contenido (Cartas)?
-                    // Usamos isExpansionFinished que es la variable visual "final"
-                    if (isExpansionFinished || clickedIconIndex != -1 || selectedWebCategory != null) {
-
-                        // Detectamos si veníamos del mundo Web para reabrir el menú luego
-                        val wasWebMode = selectedWebCategory != null
-
-                        // 1. Iniciamos el cierre visual
-                        homeViewModel.updateIsExpansionFinished(false)
-                        homeViewModel.updateIsAnimatingOut(false)
-
-                        // 2. Limpiamos datos
-                        homeViewModel.setSelectedWebCategory(null)
-                        homeViewModel.onIconClicked(-1) // Esto resetea clickedIconIndex a -1
-
-                        // 3. Truco UX: Si era web, reabrimos el menú satélite suavemente
-                        if (wasWebMode) {
-                            scope.launch {
-                                delay(300)
-                                homeViewModel.setWebMenuOpen(true)
-                            }
-                        }
+                // CASO 1: ¿Estamos viendo contenido (Cartas)?
+                if (isExpansionFinished || clickedIconIndex != -1 || selectedWebCategory != null) {
+                    val wasWebMode = selectedWebCategory != null
+                    homeViewModel.updateIsExpansionFinished(false)
+                    homeViewModel.updateIsAnimatingOut(false)
+                    homeViewModel.setSelectedWebCategory(null)
+                    homeViewModel.onIconClicked(-1)
+                    if (wasWebMode) {
+                        scope.launch { delay(300); homeViewModel.setWebMenuOpen(true) }
                     }
-                    // CASO 2: ¿Están los satélites web abiertos?
-                    else if (isWebMenuOpen) {
-                        homeViewModel.setWebMenuOpen(false)
-                    }
-                    // CASO 3: Estamos en el inicio absoluto -> Salir
-                    else {
-                        activity?.onBackPressed()
-                    }
-                },
+                }
+                // CASO 2: ¿Están los satélites web abiertos?
+                else if (isWebMenuOpen) {
+                    homeViewModel.setWebMenuOpen(false)
+                }
+                // CASO 3: Salir
+                else {
+                    activity?.onBackPressed()
+                }
+            },
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
-                tint = Color.White,
-                modifier = Modifier.size(28.dp)
-            )
+            androidx.compose.material3.Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White, modifier = Modifier.size(28.dp))
         }
     }
 }

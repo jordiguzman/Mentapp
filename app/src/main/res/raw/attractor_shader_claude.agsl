@@ -1,0 +1,54 @@
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec3 u_color;
+uniform vec4 u_params; // ← NUEVO: (a, b, c, d) precalculados
+
+// --- PARÁMETROS ---
+// NOTA: A_BASE, B_BASE, etc. ya no se usan aquí.
+// Ahora se calculan en Kotlin y se pasan via u_params.
+
+// 3. CALIDAD
+const int ITERATIONS = 20;
+
+// -------------------------------------------------------------------
+// LÓGICA
+// -------------------------------------------------------------------
+
+vec4 main(vec2 fragCoord) {
+
+    // --- PASO 1: COORDENADAS ---
+    vec2 p = (fragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+
+    // --- MEJORA 3: VIÑETA ---
+    vec2 uv = fragCoord.xy / u_resolution.xy;
+    float vignette = smoothstep(0.8, 0.2, length(uv - 0.5));
+
+    // --- PASO 2: PARÁMETROS ANIMADOS (YA CALCULADOS EN CPU) ---
+    float a = u_params.x;
+    float b = u_params.y;
+    float c = u_params.z;
+    float d = u_params.w;
+
+    // --- PASO 3: SIMULACIÓN ---
+    for(int i = 0; i < ITERATIONS; i++) {
+        p = vec2(
+            sin(a * p.y) + c * cos(a * p.x),
+            sin(b * p.x) + d * cos(b * p.y)
+        );
+    }
+
+    // --- PASO 4: COLOREAR ---
+    float brightness = smoothstep(0.0, 1.5, length(p));
+
+    // --- MEJORA 3: APLICAR VIÑETA ---
+    brightness *= vignette;
+
+    // --- MEJORA 2: GRADIENTE INTERNO ---
+    vec3 color = mix(
+        u_color * 0.3,   // Centro más oscuro
+        u_color * 1.3,   // Bordes más brillantes
+        brightness
+    );
+
+    return vec4(color, 1.0);
+}

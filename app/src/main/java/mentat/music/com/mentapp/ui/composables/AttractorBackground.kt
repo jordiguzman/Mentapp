@@ -19,10 +19,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.platform.LocalContext
 import mentat.music.com.mentapp.R
+import kotlin.math.cos
+import kotlin.math.sin
 
-// Colores definidos
+// Colores
 val MentatRed = Color(0.8f, 0.0f, 0.3f, 1.0f)
 val MentatBlue = Color(0.15f, 0.3f, 0.7f, 1.0f)
+
+// Constantes del shader (movidas desde GLSL a Kotlin)
+private const val A_BASE = -1.4f
+private const val B_BASE = 1.6f
+private const val C_BASE = 1.0f
+private const val D_BASE = 0.7f
+private const val A_SPEED = 0.05f
+private const val B_SPEED = 0.03f
+private const val C_SPEED = 0.1f
+private const val D_SPEED = 0.07f
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
@@ -32,14 +44,12 @@ fun AttractorBackground(
     frozenTime: Float,
     isBlueMode: Boolean
 ) {
-    // --- SIN ANIMACIÓN: CORTE DIRECTO ---
-    // Elegimos el color directamente según el modo. ¡PUM!
+    // Cambio de color de golpe (sin animación)
     val targetColor = if (isBlueMode) MentatBlue else MentatRed
 
-    // --- Lógica del Shader ---
     val context = LocalContext.current
     val shaderString = remember {
-        context.resources.openRawResource(R.raw.attractor_shader)
+        context.resources.openRawResource(R.raw.attractor_shader_claude)
             .bufferedReader()
             .use { it.readText() }
     }
@@ -53,28 +63,33 @@ fun AttractorBackground(
         animationSpec = infiniteRepeatable(
             tween(durationMillis = 600000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
-        ), label = "time"
+        ),
+        label = "time"
     )
 
     Box(
-        modifier = modifier
-            .drawWithCache {
-                val timeToRender = if (isFrozen) frozenTime else time
+        modifier = modifier.drawWithCache {
+            val timeToRender = if (isFrozen) frozenTime else time
 
-                shader.setFloatUniform("u_time", timeToRender)
-                shader.setFloatUniform("u_resolution", size.width - 100f, size.height - 100f)
+            // MEJORA 1: Calcular parámetros una sola vez por frame (en CPU)
+            val a = A_BASE + sin(timeToRender * A_SPEED) * 0.5f
+            val b = B_BASE + cos(timeToRender * B_SPEED) * 0.4f
+            val c = C_BASE + sin(timeToRender * C_SPEED) * 0.2f
+            val d = D_BASE + cos(timeToRender * D_SPEED) * 0.3f
 
-                // Inyectamos el color directo
-                shader.setFloatUniform(
-                    "u_color",
-                    targetColor.red,
-                    targetColor.green,
-                    targetColor.blue
-                )
+            shader.setFloatUniform("u_time", timeToRender)
+            shader.setFloatUniform("u_resolution", size.width, size.height)
+            shader.setFloatUniform("u_params", a, b, c, d) // ← Pasar los 4 valores
+            shader.setFloatUniform(
+                "u_color",
+                targetColor.red,
+                targetColor.green,
+                targetColor.blue
+            )
 
-                onDrawBehind {
-                    drawRect(brush)
-                }
+            onDrawBehind {
+                drawRect(brush)
             }
+        }
     )
 }
