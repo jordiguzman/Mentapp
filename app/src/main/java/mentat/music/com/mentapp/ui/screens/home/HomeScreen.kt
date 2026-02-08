@@ -40,7 +40,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
@@ -74,7 +73,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,6 +101,7 @@ import mentat.music.com.mentapp.ui.rememberVibrator
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
 import mentat.music.com.mentapp.ui.theme.VerdanaFontFamily
+import mentat.music.com.mentapp.utils.CarouselMapper
 import mentat.music.com.mentapp.utils.MentatConstants
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -156,7 +155,6 @@ fun HomeScreen(
     }
 
     val currentLanguage by homeViewModel.currentLanguage.collectAsState()
-    // El texto del botón ahora se gestiona dentro de HudLayer, aquí ya no hace falta calcularlo
 
     val view = LocalView.current
     val window = (view.context as Activity).window
@@ -428,31 +426,18 @@ fun HomeScreen(
             // 2.C: CARRUSEL
             val appData: AppData? = remember(appState) { (appState as? AppState.Success)?.data }
             val clickedItemId = selectedWebCategory ?: if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size) currentItems[clickedIconIndex].id else null
-            var carouselData: List<CarouselItem>? = null
-            var conceptDataAsCarousel: List<CarouselItem>? = null
-            if (appData != null && clickedItemId != null) {
-                when (clickedItemId) {
-                    "GUZZ" -> carouselData = appData.GUZZ
-                    "Spotify" -> carouselData = appData.Spotify
-                    "Bandcamp" -> carouselData = appData.Bandcamp
-                    "SoundCloud" -> carouselData = appData.Soundcloud
-                    "YouTube" -> carouselData = appData.YouTube?.map { it.copy(imageUrl = "https://img.youtube.com/vi/${it.imageUrl}/0.jpg") }
 
-                    "Audio", "Divulgacion", "Blog" -> {
-                        conceptDataAsCarousel = newsPosts.map { entity ->
-                            val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "").replace("\n", " ").trim()
-                            CarouselItem(
-                                title = entity.title,
-                                imageUrl = entity.imageUrl,
-                                targetUrl = entity.targetUrl,
-                                artist = plainText
-                            )
-                        }
-                    }
-                }
+            // ✅ CAMBIO: Usar el CarouselMapper
+            val itemsToShow = CarouselMapper.mapToCarouselItems(
+                itemId = clickedItemId,
+                appData = appData,
+                newsPosts = newsPosts
+            )
+
+            val carouselLayerTargetAlpha = when {
+                isExpansionFinished && (appState is AppState.Loading || itemsToShow != null) -> 1f
+                else -> 0f
             }
-
-            val carouselLayerTargetAlpha = when { isExpansionFinished && (appState is AppState.Loading || carouselData != null || conceptDataAsCarousel != null) -> 1f else -> 0f }
             val carouselLayerAnimatedAlpha by animateFloatAsState(
                 targetValue = carouselLayerTargetAlpha,
                 animationSpec = tween(TRANSITION_DURATION),
@@ -461,12 +446,17 @@ fun HomeScreen(
 
             val brandColor = if (selectedWebCategory != null) Color.Black else (if (clickedIconIndex != -1 && clickedIconIndex < currentItems.size) currentItems[clickedIconIndex].color else Color.Transparent)
             val isConceptMode = (clickedItemId in listOf("Audio", "Divulgacion", "Blog"))
-            val carouselBoxModifier = if (isPortrait) { if (isConceptMode) Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f) else Modifier.fillMaxWidth(0.9f).aspectRatio(1f) } else { if (isConceptMode) Modifier.fillMaxHeight(0.9f).fillMaxWidth(0.7f) else Modifier.fillMaxHeight(0.9f).aspectRatio(1f) }
+            val carouselBoxModifier = if (isPortrait) {
+                if (isConceptMode) Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.8f)
+                else Modifier.fillMaxWidth(0.9f).aspectRatio(1f)
+            } else {
+                if (isConceptMode) Modifier.fillMaxHeight(0.9f).fillMaxWidth(0.7f)
+                else Modifier.fillMaxHeight(0.9f).aspectRatio(1f)
+            }
 
             if (isExpansionFinished) {
                 Box(Modifier.alpha(carouselLayerAnimatedAlpha).then(carouselBoxModifier), Alignment.Center) {
                     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(32.dp)).background(Brush.linearGradient(listOf(brandColor.copy(0.6f), brandColor.copy(0.3f)))).border(3.dp, Brush.linearGradient(listOf(Color.White.copy(0.9f), Color.Gray.copy(0.3f), Color.White.copy(0.9f))), RoundedCornerShape(32.dp)), Alignment.Center) {
-                        val itemsToShow = carouselData ?: conceptDataAsCarousel
                         val safeInitialPage = if (itemsToShow.isNullOrEmpty()) 0 else currentPage
                         if (itemsToShow != null) {
                             key(safeInitialPage to itemsToShow.size) {
@@ -487,19 +477,18 @@ fun HomeScreen(
                     }
                 }
             }
-        } // FIN BOX LOGICO (Contenido central)
+        } // FIN BOX LOGICO
 
         // =================================================================
         // CAPA 3: HUD (BOTONES ENCIMA DE TODO - zIndex: 100f)
         // =================================================================
-
-        // Declaramos el estado de vibración aquí para pasarlo al HudLayer
         var isVibrationOn by remember { mutableStateOf(mentat.music.com.mentapp.data.UserPreferences.isVibrationEnabled(context)) }
+        val backDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
         HudLayer(
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(100f), // IMPRESCINDIBLE PARA QUE ESTÉ ENCIMA
+                .zIndex(100f),
             isVibrationOn = isVibrationOn,
             currentLanguage = currentLanguage,
             onVibrationToggle = {
@@ -520,9 +509,7 @@ fun HomeScreen(
             },
             onBackClick = {
                 vibrator.vibrateClick()
-                val activity = context as? Activity
 
-                // LÓGICA INTELIGENTE DE NAVEGACIÓN
                 if (isExpansionFinished || clickedIconIndex != -1 || selectedWebCategory != null) {
                     val wasWebMode = selectedWebCategory != null
                     homeViewModel.updateIsExpansionFinished(false)
@@ -535,10 +522,15 @@ fun HomeScreen(
                 } else if (isWebMenuOpen) {
                     homeViewModel.setWebMenuOpen(false)
                 } else {
-                    activity?.onBackPressed()
+                    backDispatcher?.onBackPressed()
                 }
             }
         )
+    }
+}
 
-    } // FIN BOX PRINCIPAL
-} // FIN HomeScreen
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenPreview() {
+    HomeScreen(navController = rememberNavController())
+}
