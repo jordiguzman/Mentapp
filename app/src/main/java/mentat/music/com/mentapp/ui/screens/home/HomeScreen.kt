@@ -5,12 +5,9 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -28,7 +25,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -78,11 +74,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,6 +94,7 @@ import mentat.music.com.mentapp.ui.composables.AlbumCarouselBox
 import mentat.music.com.mentapp.ui.composables.AttractorBackground
 import mentat.music.com.mentapp.ui.composables.CircularDialLayout
 import mentat.music.com.mentapp.ui.composables.DialItem
+import mentat.music.com.mentapp.ui.composables.HudLayer
 import mentat.music.com.mentapp.ui.composables.MiniCircularDialLayout
 import mentat.music.com.mentapp.ui.composables.SolarisPlayButton
 import mentat.music.com.mentapp.ui.composables.TRANSITION_DURATION
@@ -109,17 +102,11 @@ import mentat.music.com.mentapp.ui.composables.VideoBackground
 import mentat.music.com.mentapp.ui.rememberVibrator
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
+import mentat.music.com.mentapp.ui.theme.VerdanaFontFamily
 import mentat.music.com.mentapp.utils.MentatConstants
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
-
-val VerdanaFontFamily = FontFamily(
-    Font(R.font.verdana_regular, FontWeight.Normal),
-    Font(R.font.verdana_italic, FontWeight.Normal, FontStyle.Italic),
-    Font(R.font.verdana_bold, FontWeight.Bold),
-    Font(R.font.verdana_bold_italic, FontWeight.Bold, FontStyle.Italic)
-)
 
 @SuppressLint("LocalContextResourcesRead")
 @Composable
@@ -169,13 +156,13 @@ fun HomeScreen(
     }
 
     val currentLanguage by homeViewModel.currentLanguage.collectAsState()
-    val buttonText = if (currentLanguage == HomeViewModel.Language.ES) "EN" else "ES"
+    // El texto del botón ahora se gestiona dentro de HudLayer, aquí ya no hace falta calcularlo
 
     val view = LocalView.current
     val window = (view.context as Activity).window
     LaunchedEffect(key1 = window) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowCompat.getInsetsController(window, view)
+        val controller = WindowInsetsControllerCompat(window, view)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(WindowInsetsCompat.Type.systemBars())
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -451,15 +438,14 @@ fun HomeScreen(
                     "SoundCloud" -> carouselData = appData.Soundcloud
                     "YouTube" -> carouselData = appData.YouTube?.map { it.copy(imageUrl = "https://img.youtube.com/vi/${it.imageUrl}/0.jpg") }
 
-                    // --- CORRECCIÓN CRÍTICA: MAPEO CON NOMBRES EXPLÍCITOS ---
                     "Audio", "Divulgacion", "Blog" -> {
                         conceptDataAsCarousel = newsPosts.map { entity ->
                             val plainText = android.text.Html.fromHtml(entity.content ?: "", android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "").replace("\n", " ").trim()
                             CarouselItem(
-                                title = entity.title,       // Título -> Título
-                                imageUrl = entity.imageUrl, // Imagen -> Imagen
+                                title = entity.title,
+                                imageUrl = entity.imageUrl,
                                 targetUrl = entity.targetUrl,
-                                artist = plainText          // Texto -> Artista/Texto
+                                artist = plainText
                             )
                         }
                     }
@@ -485,7 +471,7 @@ fun HomeScreen(
                         if (itemsToShow != null) {
                             key(safeInitialPage to itemsToShow.size) {
                                 AlbumCarouselBox(
-                                    modifier = Modifier, // <--- SIN fillMaxSize() PARA QUE NO REVIENTE EL LAYOUT
+                                    modifier = Modifier,
                                     items = itemsToShow,
                                     navController = navController,
                                     isConceptMode = isConceptMode,
@@ -501,58 +487,42 @@ fun HomeScreen(
                     }
                 }
             }
-        } // FIN BOX LOGICO
+        } // FIN BOX LOGICO (Contenido central)
 
         // =================================================================
         // CAPA 3: HUD (BOTONES ENCIMA DE TODO - zIndex: 100f)
         // =================================================================
-        val context = LocalContext.current
+
+        // Declaramos el estado de vibración aquí para pasarlo al HudLayer
         var isVibrationOn by remember { mutableStateOf(mentat.music.com.mentapp.data.UserPreferences.isVibrationEnabled(context)) }
 
-        // VIBRACIÓN
-        Box(
-            modifier = Modifier.align(Alignment.TopStart).padding(24.dp).size(48.dp).zIndex(100f).clickable {
-                val newState = !isVibrationOn; isVibrationOn = newState
+        HudLayer(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(100f), // IMPRESCINDIBLE PARA QUE ESTÉ ENCIMA
+            isVibrationOn = isVibrationOn,
+            currentLanguage = currentLanguage,
+            onVibrationToggle = {
+                val newState = !isVibrationOn
+                isVibrationOn = newState
                 mentat.music.com.mentapp.data.UserPreferences.setVibrationEnabled(context, newState)
                 if (newState) vibrator.vibrateClick()
             },
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.material3.Icon(
-                painter = painterResource(id = if (isVibrationOn) R.drawable.ic_vibration_foreground else R.drawable.ic_vibration_no_foreground),
-                contentDescription = "Vibración",
-                tint = Color.White.copy(0.5f),
-                modifier = Modifier.size(48.dp)
-            )
-        }
-
-        // SALIR
-        Box(
-            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp).size(48.dp).zIndex(100f).clickable {
+            onExitClick = {
                 vibrator.vibrateClick()
                 val activity = context as? Activity
-                if (activity != null) { activity.finishAndRemoveTask(); exitProcess(0) }
+                activity?.finishAndRemoveTask()
+                exitProcess(0)
             },
-            contentAlignment = Alignment.Center
-        ) {
-            Image(painter = painterResource(id = R.drawable.ic_power), contentDescription = "Salir", colorFilter = ColorFilter.tint(Color.White.copy(0.6f)), modifier = Modifier.size(28.dp))
-        }
-
-        // IDIOMA
-        Box(
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 35.dp, end = 80.dp).zIndex(100f).clickable { homeViewModel.toggleLanguage(); vibrator.vibrateClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = buttonText, color = Color.White.copy(0.6f), fontSize = 20.sp, fontFamily = VerdanaFontFamily, fontWeight = FontWeight.Bold)
-        }
-
-        // BACK (CON LÓGICA INTELIGENTE)
-        Box(
-            modifier = Modifier.align(Alignment.BottomEnd).padding(32.dp).size(48.dp).zIndex(100f).background(Color.Black.copy(0.3f), CircleShape).clickable {
+            onLanguageClick = {
+                homeViewModel.toggleLanguage()
+                vibrator.vibrateClick()
+            },
+            onBackClick = {
                 vibrator.vibrateClick()
                 val activity = context as? Activity
 
-                // CASO 1: ¿Estamos viendo contenido (Cartas)?
+                // LÓGICA INTELIGENTE DE NAVEGACIÓN
                 if (isExpansionFinished || clickedIconIndex != -1 || selectedWebCategory != null) {
                     val wasWebMode = selectedWebCategory != null
                     homeViewModel.updateIsExpansionFinished(false)
@@ -562,25 +532,13 @@ fun HomeScreen(
                     if (wasWebMode) {
                         scope.launch { delay(300); homeViewModel.setWebMenuOpen(true) }
                     }
-                }
-                // CASO 2: ¿Están los satélites web abiertos?
-                else if (isWebMenuOpen) {
+                } else if (isWebMenuOpen) {
                     homeViewModel.setWebMenuOpen(false)
-                }
-                // CASO 3: Salir
-                else {
+                } else {
                     activity?.onBackPressed()
                 }
-            },
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.material3.Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White, modifier = Modifier.size(28.dp))
-        }
-    }
-}
+            }
+        )
 
-@Preview(showBackground = true)
-@Composable
-fun HomeScreenPreview() {
-    HomeScreen(navController = rememberNavController())
-}
+    } // FIN BOX PRINCIPAL
+} // FIN HomeScreen
