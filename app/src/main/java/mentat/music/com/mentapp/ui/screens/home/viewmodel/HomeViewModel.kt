@@ -1,8 +1,6 @@
 package mentat.music.com.mentapp.ui.screens.home.viewmodel
 
 import android.app.Application
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -12,7 +10,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mentat.music.com.mentapp.data.local.AppDatabase
 import mentat.music.com.mentapp.data.local.entity.MediaEntity
@@ -21,8 +22,6 @@ import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.data.repository.MediaRepository
 
 // --- CONSTANTES DE UI ---
-private val angleStep = (2 * Math.PI.toFloat() / 6)
-private val targetAngleRad = (Math.PI.toFloat() / 2.0f)
 private val BANDCAMP_START_ANGLE = (-Math.PI / 2).toFloat()
 
 private const val ROTATION_KEY = "rotationAngle"
@@ -30,7 +29,7 @@ private const val ANIMATING_OUT_KEY = "isAnimatingOut"
 private const val CLICKED_INDEX_KEY = "clickedIconIndex"
 private const val EXPANSION_FINISHED_KEY = "isExpansionFinished"
 
-// --- ESTADOS DE LA APP ---
+// --- ESTADOS DE LA APP (DATOS) ---
 sealed class AppState {
     object Loading : AppState()
     data class Success(val data: AppData) : AppState()
@@ -46,46 +45,45 @@ class HomeViewModel(
     private val database = AppDatabase.getDatabase(application)
     private val mediaRepository = MediaRepository(database.mediaDao())
 
-    // --- 2. GESTIÓN DE IDIOMA ---
     enum class Language { ES, EN }
-    private val _currentLanguage = MutableStateFlow(Language.ES)
-    val currentLanguage: StateFlow<Language> = _currentLanguage.asStateFlow()
-    private val _clickedIconIndex = MutableStateFlow(-1)
 
+    // --- 2. ESTADO UI UNIFICADO ---
+    // Inicializamos con los valores guardados en SavedStateHandle si existen
+    private val _uiState = MutableStateFlow(
+        HomeUiState(
+            rotationAngle = savedStateHandle[ROTATION_KEY] ?: BANDCAMP_START_ANGLE,
+            isAnimatingOut = savedStateHandle[ANIMATING_OUT_KEY] ?: false,
+            clickedIconIndex = savedStateHandle[CLICKED_INDEX_KEY] ?: -1,
+            isExpansionFinished = savedStateHandle[EXPANSION_FINISHED_KEY] ?: false
+        )
+    )
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    fun toggleLanguage() {
-        _currentLanguage.value = if (_currentLanguage.value == Language.ES) Language.EN else Language.ES
-        // No hace falta refreshAllData() porque los flujos ya observan el cambio de idioma
-    }
+    // --- 3. LÓGICA DE DATOS REACTIVA ---
 
-    // --- 3. LÓGICA DE FILTRADO (NOTICIAS) ---
-    private val _selectedCategory = MutableStateFlow("Blog")
+    // Observamos cambios específicos dentro del uiState para no disparar recargas innecesarias
+    private val currentLanguageFlow = _uiState.map { it.currentLanguage }.distinctUntilChanged()
+    private val selectedCategoryFlow = _uiState.map { it.currentCategoryFilter }.distinctUntilChanged()
 
-    fun filterByCategory(category: String) {
-        _selectedCategory.value = category
-    }
-
-    // AHORA ESCUCHAMOS 3 COSAS: DATOS, CATEGORÍA E IDIOMA
+    // Flujo de Noticias (Blog, Divulgación, etc.)
     val newsPosts: StateFlow<List<CarouselItem>> = combine(
         mediaRepository.allMedia,
-        _selectedCategory,
-        _currentLanguage // <--- ¡NUEVO!
+        selectedCategoryFlow,
+        currentLanguageFlow
     ) { allItems, category, language ->
         allItems
             .filter { it.category.equals(category, ignoreCase = true) }
-            .map { entity -> mapEntityToItem(entity, language) } // Usamos el mapeador inteligente
+            .map { entity -> mapEntityToItem(entity, language) }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-
-    // --- 4. FLUJO PRINCIPAL (MÚSICA) ---
-    // AHORA ESCUCHAMOS 2 COSAS: DATOS E IDIOMA
+    // Flujo Principal (Música, AppData)
     val appState: StateFlow<AppState> = combine(
         mediaRepository.allMedia,
-        _currentLanguage // <--- ¡NUEVO!
+        currentLanguageFlow
     ) { mediaList, language ->
         if (mediaList.isEmpty()) {
             AppState.Loading
@@ -118,18 +116,67 @@ class HomeViewModel(
         }
     }
 
-    // --- HELPER MAESTRO: TRADUCTOR ---
-    // Esta función decide qué texto mostrar según el idioma seleccionado
-    // Archivo: HomeViewModel.kt
+    // --- 4. ACCIONES DE UI (Modifican el UI State) ---
+
+    fun toggleLanguage() {
+        _uiState.update {
+            val newLang = if (it.currentLanguage == Language.ES) Language.EN else Language.ES
+            it.copy(currentLanguage = newLang)
+        }
+    }
+
+    fun filterByCategory(category: String) {
+        _uiState.update { it.copy(currentCategoryFilter = category) }
+    }
+
+    fun setCurrentPage(page: Int) {
+        _uiState.update { it.copy(currentPage = page) }
+    }
+
+    // Métodos que guardan persistencia (SavedStateHandle) Y actualizan UI
+    fun updateRotationAngle(angle: Float) {
+        savedStateHandle[ROTATION_KEY] = angle
+        _uiState.update { it.copy(rotationAngle = angle) }
+    }
+
+    fun updateIsAnimatingOut(isAnimating: Boolean) {
+        savedStateHandle[ANIMATING_OUT_KEY] = isAnimating
+        _uiState.update { it.copy(isAnimatingOut = isAnimating) }
+    }
+
+    // Unificación de updateClickedIconIndex y onIconClicked
+    fun onIconClicked(index: Int) {
+        savedStateHandle[CLICKED_INDEX_KEY] = index
+        _uiState.update { it.copy(clickedIconIndex = index) }
+    }
+    // Alias para mantener compatibilidad si lo llamas así en otros sitios
+    fun updateClickedIconIndex(index: Int) = onIconClicked(index)
+
+    fun updateIsExpansionFinished(isFinished: Boolean) {
+        savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished
+        _uiState.update { it.copy(isExpansionFinished = isFinished) }
+    }
+
+    // Lógica Web Menu
+    fun setWebMenuOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isWebMenuOpen = isOpen) }
+    }
+
+    fun updateWebMenuRotationAngle(angle: Float) {
+        _uiState.update { it.copy(webMenuRotationAngle = angle) }
+    }
+
+    fun setSelectedWebCategory(category: String?) {
+        _uiState.update { it.copy(selectedWebCategory = category) }
+    }
+
+
+    // --- 5. HELPERS DE MAPEO (INTACTOS) ---
 
     private fun mapEntityToItem(entity: MediaEntity, language: Language): CarouselItem {
         val isEnglish = language == Language.EN
-
-        // 1. Preparamos el contenido real (el texto largo)
         val realContent = if (isEnglish && !entity.contentEn.isNullOrBlank()) entity.contentEn else entity.content
-
-        // 2. Preparamos la fecha/artista original
-        val realArtist = entity.artist // "19/01/2026"
+        val realArtist = entity.artist
 
         return CarouselItem(
             id = entity.id.toString(),
@@ -137,69 +184,20 @@ class HomeViewModel(
             appPackageName = entity.appPackageName,
             category = entity.category,
             date = realArtist,
-
             title = if (isEnglish && !entity.titleEn.isNullOrBlank()) entity.titleEn else entity.title,
-
-            // targetUrl...
             targetUrl = if (isEnglish && !entity.targetUrlEn.isNullOrBlank()) entity.targetUrlEn else entity.targetUrl,
-
-            // content se queda con el contenido por si acaso
             content = realContent,
-
-            // 🔥 AQUÍ ESTÁ EL TRUCO DEL ALMENDRUCO 🔥
-            // Si es un Blog, le metemos el TEXTO LARGO (realContent) en la variable 'artist'.
-            // Si es Música, le dejamos el artista original.
             artist = if (entity.category == "Blog" || entity.category == "Divulgacion") {
-                realContent // <--- ¡AQUÍ ESTÁ EL TEXTO QUE BUSCAS!
+                realContent
             } else {
-                realArtist // Para música (Spotify, etc) dejamos el artista
+                realArtist
             }
         )
     }
 
-    // Helper para filtrar listas de música
     private fun filterAndMap(list: List<MediaEntity>, category: String, language: Language): List<CarouselItem> {
         return list
             .filter { it.category.equals(category, ignoreCase = true) }
             .map { entity -> mapEntityToItem(entity, language) }
-    }
-
-    // --- ESTADO DE UI (SIN CAMBIOS) ---
-    private val _currentPage = mutableIntStateOf(0)
-    val currentPage: State<Int> = _currentPage
-    fun setCurrentPage(page: Int) { _currentPage.value = page }
-
-    val rotationAngle: StateFlow<Float> = savedStateHandle.getStateFlow(ROTATION_KEY, BANDCAMP_START_ANGLE)
-    fun updateRotationAngle(angle: Float) { savedStateHandle[ROTATION_KEY] = angle }
-
-    val isAnimatingOut: StateFlow<Boolean> = savedStateHandle.getStateFlow(ANIMATING_OUT_KEY, false)
-    fun updateIsAnimatingOut(isAnimating: Boolean) { savedStateHandle[ANIMATING_OUT_KEY] = isAnimating }
-
-    val clickedIconIndex: StateFlow<Int> = savedStateHandle.getStateFlow(CLICKED_INDEX_KEY, -1)
-    fun updateClickedIconIndex(index: Int) { savedStateHandle[CLICKED_INDEX_KEY] = index }
-
-    val isExpansionFinished: StateFlow<Boolean> = savedStateHandle.getStateFlow(EXPANSION_FINISHED_KEY, false)
-    fun updateIsExpansionFinished(isFinished: Boolean) { savedStateHandle[EXPANSION_FINISHED_KEY] = isFinished }
-
-    // --- LÓGICA DEL MINI DIAL (WEB) ---
-    private val _isWebMenuOpen = MutableStateFlow(false)
-    val isWebMenuOpen: StateFlow<Boolean> = _isWebMenuOpen.asStateFlow()
-    fun setWebMenuOpen(isOpen: Boolean) { _isWebMenuOpen.value = isOpen }
-
-    private val _webMenuRotationAngle = MutableStateFlow(0f)
-    val webMenuRotationAngle: StateFlow<Float> = _webMenuRotationAngle.asStateFlow()
-    fun updateWebMenuRotationAngle(angle: Float) { _webMenuRotationAngle.value = angle }
-    // NUEVA VARIABLE: Guarda qué botón del Mini Dial pulsaste (Audio, Divulgacion, Blog)
-    private val _selectedWebCategory = MutableStateFlow<String?>(null)
-    val selectedWebCategory: StateFlow<String?> = _selectedWebCategory.asStateFlow()
-    fun setSelectedWebCategory(category: String?) { _selectedWebCategory.value = category }
-    // ... tus otras variables ...
-
-    // Esta función recibe el índice (-1 para cerrar, 0, 1, 2 para abrir)
-    fun onIconClicked(index: Int) {
-        _clickedIconIndex.value = index
-
-        // OPCIONAL: Si al volver atrás quieres que el dial se mueva o haga algo,
-        // puedes meter lógica aquí. Por ahora, con cambiar el valor basta.
     }
 }
