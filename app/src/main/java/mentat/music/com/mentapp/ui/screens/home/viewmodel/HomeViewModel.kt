@@ -20,9 +20,10 @@ import mentat.music.com.mentapp.data.local.entity.MediaEntity
 import mentat.music.com.mentapp.data.model.AppData
 import mentat.music.com.mentapp.data.model.CarouselItem
 import mentat.music.com.mentapp.data.repository.MediaRepository
+import mentat.music.com.mentapp.ui.screens.home.DialConstants
 
 // --- CONSTANTES DE UI ---
-private val BANDCAMP_START_ANGLE = (-Math.PI / 2).toFloat()
+
 
 private const val ROTATION_KEY = "rotationAngle"
 private const val ANIMATING_OUT_KEY = "isAnimatingOut"
@@ -51,7 +52,7 @@ class HomeViewModel(
     // Inicializamos con los valores guardados en SavedStateHandle si existen
     private val _uiState = MutableStateFlow(
         HomeUiState(
-            rotationAngle = savedStateHandle[ROTATION_KEY] ?: BANDCAMP_START_ANGLE,
+            rotationAngle = savedStateHandle[ROTATION_KEY] ?: DialConstants.START_ANGLE,
             isAnimatingOut = savedStateHandle[ANIMATING_OUT_KEY] ?: false,
             clickedIconIndex = savedStateHandle[CLICKED_INDEX_KEY] ?: -1,
             isExpansionFinished = savedStateHandle[EXPANSION_FINISHED_KEY] ?: false
@@ -199,5 +200,30 @@ class HomeViewModel(
         return list
             .filter { it.category.equals(category, ignoreCase = true) }
             .map { entity -> mapEntityToItem(entity, language) }
+    }
+    // --- LÓGICA DE NAVEGACIÓN (BACK PRESS) ---
+    // Devuelve true si el ViewModel consumió el evento 'Atrás', false si debe salir de la app
+    fun handleBackPress() {
+        val currentState = _uiState.value
+
+        if (currentState.isExpansionFinished || currentState.clickedIconIndex != -1 || currentState.selectedWebCategory != null) {
+            val wasWebMode = currentState.selectedWebCategory != null
+
+            // 1. Reseteamos estados
+            updateIsExpansionFinished(false)
+            updateIsAnimatingOut(false)
+            setSelectedWebCategory(null)
+            onIconClicked(-1)
+
+            // 2. Lógica específica de retorno al menú web
+            if (wasWebMode) {
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(300)
+                    setWebMenuOpen(true)
+                }
+            }
+        } else if (currentState.isWebMenuOpen) {
+            setWebMenuOpen(false)
+        }
     }
 }

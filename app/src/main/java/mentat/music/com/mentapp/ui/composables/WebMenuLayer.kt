@@ -1,4 +1,4 @@
-package mentat.music.com.mentapp.ui.composables
+package mentat.music.com.mentapp.ui.composables // O tu paquete
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -31,77 +31,59 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mentat.music.com.mentapp.R
+import mentat.music.com.mentapp.ui.screens.home.DialConstants
 import kotlin.math.roundToInt
 
 @Composable
 fun WebMenuLayer(
     modifier: Modifier = Modifier,
-    // Estados
     isVisible: Boolean,
     rotationAnim: Animatable<Float, AnimationVector1D>,
     items: List<DialItem>,
-    // Callbacks
     onClose: () -> Unit,
     onRotationChanged: (Float) -> Unit,
-    // Utils
     scope: CoroutineScope,
     onVibrate: () -> Unit
 ) {
-    // Animación de escala interna (Zoom in/out al abrir/cerrar)
     val miniDialScale by animateFloatAsState(
         targetValue = if (isVisible) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 200f),
         label = "miniDialScale"
     )
 
-    // Solo renderizamos si tiene un tamaño visible mínimo para ahorrar recursos
     if (isVisible || miniDialScale > 0.1f) {
         Box(
             modifier = modifier
-                .offset(y = 140.dp) // Offset original de diseño
+                .offset(y = DialConstants.WEB_MENU_OFFSET_Y)
                 .scale(miniDialScale),
             contentAlignment = Alignment.Center
         ) {
-            // 1. Fondo del Dial (Anillo Gradiente Morado)
             Canvas(Modifier.size(245.dp)) {
-                val brush = Brush.sweepGradient(
-                    listOf(
-                        Color.White.copy(0.95f),
-                        Color.White.copy(0.2f),
-                        Color.Gray.copy(0.5f),
-                        Color.White.copy(0.2f),
-                        Color.White.copy(0.95f)
-                    ),
-                    center = center
+                val brush = Brush.sweepGradient(DialConstants.WEB_MENU_GRADIENT, center = center)
+                drawCircle(
+                    brush,
+                    radius = DialConstants.WEB_MENU_RADIUS.toPx(),
+                    style = Stroke(width = DialConstants.WEB_MENU_STROKE.toPx())
                 )
-                // Ancho del anillo (55dp) y radio (95dp)
-                drawCircle(brush, radius = 95.dp.toPx(), style = Stroke(width = 55.dp.toPx()))
             }
 
-            // 2. Lógica de Gestos y Contenido
-            // Usamos CompositionLocalProvider para teñir los iconos de morado (#893471)
-            CompositionLocalProvider(LocalContentColor provides Color(0xFF893471)) {
+            CompositionLocalProvider(LocalContentColor provides DialConstants.COLOR_WEB_MENU) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            val stepRad = (2 * Math.PI / 3).toFloat() // 120 grados por ítem
+                            val stepRad = (2 * Math.PI / 3).toFloat()
                             detectDragGestures(
-                                onDragStart = {
-                                    scope.launch { rotationAnim.stop() }
-                                },
+                                onDragStart = { scope.launch { rotationAnim.stop() } },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    // Factor de sensibilidad: dragAmount.x / 350
                                     scope.launch {
                                         rotationAnim.snapTo(rotationAnim.value + ((dragAmount.x / 350) * -1f))
                                     }
                                 },
                                 onDragEnd = {
-                                    // Lógica de Snapping a 3 posiciones
                                     val steps = (rotationAnim.value / stepRad).roundToInt()
                                     val target = steps * stepRad
-
                                     scope.launch {
                                         rotationAnim.animateTo(target, spring(0.6f, 300f))
                                         onRotationChanged(target)
@@ -115,25 +97,21 @@ fun WebMenuLayer(
                         modifier = Modifier.fillMaxSize(),
                         items = items,
                         currentRotation = rotationAnim.value,
-                        radius = 95.dp
+                        radius = DialConstants.WEB_MENU_RADIUS
                     )
                 }
             }
 
-            // 3. Botón de Cerrar (X)
             Box(
                 modifier = Modifier
                     .size(60.dp)
                     .clip(RoundedCornerShape(50))
-                    .clickable {
-                        onClose()
-                        onVibrate()
-                    },
+                    .clickable { onClose(); onVibrate() },
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(R.drawable.ic_web_foreground), // Asegúrate de que este recurso existe o usa Icons.Default.Close
-                    contentDescription = "Cerrar menú web",
+                    painter = painterResource(R.drawable.ic_web_foreground),
+                    contentDescription = "Cerrar",
                     colorFilter = ColorFilter.tint(Color.Black),
                     modifier = Modifier.size(32.dp)
                 )
