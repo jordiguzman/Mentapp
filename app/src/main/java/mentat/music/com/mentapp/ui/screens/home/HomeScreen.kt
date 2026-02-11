@@ -222,17 +222,13 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // 1. Fondo Animado
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            AttractorBackground(
-                modifier = Modifier.fillMaxSize(),
-                isFrozen = uiState.isAnimatingOut || uiState.isExpansionFinished,
-                frozenTime = frozenTime,
-                isBlueMode = !isMainDial
-            )
-        } else {
-            VideoBackground(modifier = Modifier.fillMaxSize())
-        }
+        // 1. Fondo Animado (Refactorizado a BackgroundLayer)
+        BackgroundLayer(
+            modifier = Modifier.fillMaxSize(),
+            isFrozen = uiState.isAnimatingOut || uiState.isExpansionFinished,
+            frozenTime = frozenTime,
+            isBlueMode = !isMainDial
+        )
 
         // 2. Contenido Principal
         Box(

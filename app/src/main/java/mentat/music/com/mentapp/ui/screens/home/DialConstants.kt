@@ -25,14 +25,15 @@ object DialConstants {
     const val START_ANGLE = (-Math.PI / 2).toFloat()
 
     // --- TIEMPOS DE ANIMACIÓN (ms) ---
-    const val TRANSITION_DURATION = 600
-    const val FLIP_DURATION = 250
-    const val SPRING_STIFFNESS = 150f
-    const val SPRING_DAMPING = 0.7f
+    const val TRANSITION_DURATION = 900
+    const val FLIP_DURATION = 400
+    const val SPRING_STIFFNESS = 90f
+    const val SPRING_DAMPING = 0.8f
 
     // --- COLORES ---
     val COLOR_WEB_MENU = Color(0xFF893471) // Púrpura Mentat
     val COLOR_DIMMER = Color.Black.copy(alpha = 0.6f)
+
 
     // Gradiente metálico del Dial Principal
     val DIAL_GRADIENT = listOf(
