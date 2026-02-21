@@ -9,6 +9,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,7 +42,7 @@ import mentat.music.com.mentapp.ui.screens.home.viewmodel.AppState
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
 import mentat.music.com.mentapp.utils.CarouselMapper
 import mentat.music.com.mentapp.utils.MentatConstants
-import mentat.music.com.mentapp.utils.NavigationUtils // Asegúrate de tener este import
+import mentat.music.com.mentapp.utils.NavigationUtils
 import kotlin.system.exitProcess
 
 @SuppressLint("LocalContextResourcesRead")
@@ -146,7 +147,6 @@ fun HomeScreen(
                 color = option.color,
                 onClick = {
                     when (option.id) {
-                        // Usamos NavigationUtils aquí
                         "Bluesky" -> NavigationUtils.launchUrl(context, MentatConstants.URL_BLUESKY)
                         "YouTube" -> activateExpansion(1)
                         "Spotify" -> activateExpansion(2)
@@ -222,7 +222,7 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // 1. Fondo Animado (Refactorizado a BackgroundLayer)
+        // 1. Fondo Animado (Fondo limpio, sin nada de blur)
         BackgroundLayer(
             modifier = Modifier.fillMaxSize(),
             isFrozen = uiState.isAnimatingOut || uiState.isExpansionFinished,
@@ -235,11 +235,28 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
+            // 2.A: DIAL PRINCIPAL (Aquí va el Motion Blur Direccional)
             // 2.A: DIAL PRINCIPAL
             DialLayer(
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(dialSceneAlpha),
+                    .alpha(dialSceneAlpha)
+                    .graphicsLayer {
+                    // Mantenemos tus escalas si las hay (en DialLayer no las tienes, en el Box sí)
+                    // scaleX = dialScale.value * dialFlipX.value
+                    // scaleY = dialScale.value
+
+                    // Asignación limpia recomendada por el IDE
+                    renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dialBlur.value > 0.5f) {
+                        androidx.compose.ui.graphics.BlurEffect(
+                            radiusX = dialBlur.value, // SIN multiplicar por density
+                            radiusY = 1f,
+                            edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp
+                        )
+                    } else {
+                        null
+                    }
+                },
                 currentItems = currentItems,
                 isPortrait = isPortrait,
                 dialTitle = stringResource(R.string.dial_title),
@@ -277,20 +294,30 @@ fun HomeScreen(
                         ) { homeViewModel.setWebMenuOpen(false) }
                 )
             }
-
+            // 1. CAPA DE LOS DIALES (Giran y tienen Blur)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .scale(dialScale.value)
-                    .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
                     .graphicsLayer {
-                        scaleX = dialScale.value * dialFlipX.value
-                        scaleY = dialScale.value
+                        // Este giro SOLO afecta a lo que hay dentro de esta Box (el menú web)
+                        scaleX = dialFlipX.value
                     },
                 contentAlignment = Alignment.Center
             ) {
                 WebMenuLayer(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // El Motion Blur solo para el menú
+                            renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dialBlur.value > 0.5f) {
+                                androidx.compose.ui.graphics.BlurEffect(
+                                    radiusX = dialBlur.value,
+                                    radiusY = 1f,
+                                    edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp
+                                )
+                            } else null
+                        },
                     isVisible = uiState.isWebMenuOpen,
                     rotationAnim = webMenuRotationAnim,
                     items = itemsWebMenu,
@@ -299,27 +326,64 @@ fun HomeScreen(
                     scope = scope,
                     onVibrate = { vibrator.vibrateClick() }
                 )
+            }
 
-                if (!uiState.isAnimatingOut && !uiState.isExpansionFinished) {
+
+            // 2. CAPA DEL BOTÓN (Independiente, nítida y ahora REACTIVA)
+            if (!uiState.isAnimatingOut && !uiState.isExpansionFinished) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Necesitamos capturar el estado de pulsación para el efecto visual
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isPressed by interactionSource.collectIsPressedAsState()
+
+                    // Animación de escala para el "hundimiento" (95% del tamaño al pulsar)
+                    val buttonPressScale by animateFloatAsState(
+                        targetValue = if (isPressed) 0.95f else 1f,
+                        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+                        label = "buttonPressScale"
+                    )
+
                     SolarisPlayButton(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = buttonPressScale
+                            scaleY = buttonPressScale
+                        },
                         size = 80.dp,
                         onClick = {
                             scope.launch {
-                                launch { dialFlipX.animateTo(0.0f, tween(DialConstants.FLIP_DURATION)); dialBlur.animateTo(10f, tween(DialConstants.FLIP_DURATION)) }
+                                // --- PARTE 1: EL DIAL SE VA ---
+                                launch { dialFlipX.animateTo(0.0f, tween(DialConstants.FLIP_DURATION)) }
+                                launch { dialBlur.animateTo(60f, tween(DialConstants.FLIP_DURATION, easing = FastOutLinearInEasing)) }
+
                                 delay(DialConstants.FLIP_DURATION.toLong())
+
+                                // --- CAMBIO LÓGICO ---
                                 isMainDial = !isMainDial
                                 vibrator.vibrateClick()
-                                launch { dialFlipX.animateTo(1.0f, spring(DialConstants.SPRING_DAMPING)); dialBlur.animateTo(0f, tween(300)) }
-                                launch { dialScale.snapTo(1.15f); dialScale.animateTo(1.0f, bounceSpec) }
+
+                                // --- PARTE 2: EL NUEVO DIAL ATERRIZA ---
+                                launch { dialFlipX.animateTo(1.0f, spring(DialConstants.SPRING_DAMPING)) }
+                                launch { dialBlur.animateTo(0f, tween(DialConstants.FLIP_DURATION, easing = LinearOutSlowInEasing)) }
+
+                                // Rebote de escala general de la escena
+                                launch {
+                                    dialScale.snapTo(1.15f)
+                                    dialScale.animateTo(1.0f, bounceSpec)
+                                }
                             }
                         }
                     )
 
+                    // El área invisible de seguridad (también hereda la interacción si es necesario)
                     if (uiState.isWebMenuOpen) {
                         Box(Modifier.size(80.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}))
                     }
                 }
             }
+
 
             // 2.C: CARRUSEL DE CONTENIDO (Delegado a ContentLayer)
             ContentLayer(

@@ -1,5 +1,6 @@
 package mentat.music.com.mentapp.ui.composables // O tu paquete correcto
 
+import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.spring
@@ -105,10 +106,20 @@ fun DialLayer(
             modifier = Modifier
                 .fillMaxSize()
                 .scale(dialScale.value)
-                .blur(if (dialBlur.value > 0f) dialBlur.value.dp else 0.dp)
                 .graphicsLayer {
+                    // 1. Aplicamos el giro de moneda
                     scaleX = dialScale.value * dialFlipX.value
                     scaleY = dialScale.value
+
+                    // 2. Aplicamos el Motion Blur aquí mismo
+                    // Si dialBlur.value es 60, el estiramiento será masivo
+                    if (dialBlur.value > 0.5f) {
+                        renderEffect = androidx.compose.ui.graphics.BlurEffect(
+                            radiusX = dialBlur.value,
+                            radiusY = 0.5f,
+                            edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp
+                        )
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {

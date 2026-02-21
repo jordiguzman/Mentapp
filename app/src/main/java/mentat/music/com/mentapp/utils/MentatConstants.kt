@@ -17,4 +17,6 @@ object MentatConstants {
     // revisa si el de 'Pleased To Meet You' es diferente.
     const val URL_YT_PLAYLIST_SOLAR = "https://www.youtube.com/watch?v=On90FmTsW4Q&list=PLWX76gRjsgExfq_GdVsMbGmk-Y32MU49E"
     const val URL_YT_PLAYLIST_PTMY = "https://www.youtube.com/watch?v=sewl2zmCx8w&list=PLWX76gRjsgExeUTDb4ykshd4W3vGVyrH6"
+
+    const val ANIM_DURATION = 1700
 }

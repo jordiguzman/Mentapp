@@ -51,4 +51,9 @@ object DialConstants {
         Color.White.copy(0.2f),
         Color.White.copy(0.95f)
     )
+    // --- CONSTANTES PARA LA ANIMACIÓN DEL FOCO "SCANNER" ---
+// Usamos tiempos diferentes y "raros" para que no se sincronicen fácilmente.
+    const val SCANNER_INNER_DURATION = 1700 // Duración del anillo interior (más rápido)
+    const val SCANNER_OUTER_DURATION = 2300 // Duración del anillo exterior (más lento)
+    val SCANNER_STROKE_WIDTH = 4.dp // Grosor FIJO de la línea
 }

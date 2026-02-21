@@ -1,8 +1,10 @@
 package mentat.music.com.mentapp.ui.composables
 
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -10,12 +12,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -24,6 +28,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import mentat.music.com.mentapp.ui.screens.home.DialConstants.SCANNER_INNER_DURATION
+import mentat.music.com.mentapp.ui.screens.home.DialConstants.SCANNER_OUTER_DURATION
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -40,21 +48,31 @@ fun MiniCircularDialLayout(
     val targetAngleRad = (PI / 2.0).toFloat()
     val visualShift = (PI / 2.0).toFloat()
 
-    // --- 1. COPIA EXACTA DE LA ANIMACIÓN DE PULSO DEL DIAL GRANDE ---
-    val infiniteTransition = rememberInfiniteTransition(label = "mini_dial_pulse")
+    // --- MOTORES DE ANIMACIÓN (Heredados del dial grande) ---
+    val scannerTransition = rememberInfiniteTransition(label = "mini_scannerAnim")
 
-    // Escala: de 1.0 a 1.25 (latido)
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1.0f, targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulseScale"
+    val innerScaleAnim by scannerTransition.animateFloat(
+        initialValue = 0.65f, targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(tween(SCANNER_INNER_DURATION, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "innerRingScale"
     )
 
-    // Alpha: de 0.6 a 0.3 (desvanecimiento del latido)
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f, targetValue = 0.3f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulseAlpha"
+    val outerScaleAnim by scannerTransition.animateFloat(
+        initialValue = 0.85f, targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(tween(SCANNER_OUTER_DURATION, easing = LinearEasing), RepeatMode.Reverse),
+        label = "outerRingScale"
+    )
+
+    val innerStrokeWidth by scannerTransition.animateFloat(
+        initialValue = 2f, targetValue = 5f, // Un poco más finos al ser el dial pequeño
+        animationSpec = infiniteRepeatable(tween(SCANNER_INNER_DURATION + 150, easing = LinearEasing), RepeatMode.Reverse),
+        label = "innerRingStroke"
+    )
+
+    val outerStrokeWidth by scannerTransition.animateFloat(
+        initialValue = 2.5f, targetValue = 6f,
+        animationSpec = infiniteRepeatable(tween(SCANNER_OUTER_DURATION - 100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "outerRingStroke"
     )
 
     Layout(
@@ -64,7 +82,6 @@ fun MiniCircularDialLayout(
             val logicOffset = (targetAngleRad - visualShift) - currentRotation
             val rawIndex = (logicOffset / angleStep).roundToInt()
 
-            // Calculamos quién está activo
             val activeIndex = if (items.isNotEmpty()) {
                 var index = rawIndex % items.size
                 if (index < 0) index += items.size
@@ -76,17 +93,24 @@ fun MiniCircularDialLayout(
             items.forEachIndexed { index, item ->
                 val isActive = (index == activeIndex)
 
-                // --- 2. ANIMACIÓN DE TAMAÑO (Spring) ---
-                // Activo: 60dp, Inactivo: 40dp
-                val targetSize = if (isActive) 60.dp else 40.dp
+                val coroutineScope = rememberCoroutineScope()
+                val interactionSource = remember(item.id) { MutableInteractionSource() }
+                val isPressed by interactionSource.collectIsPressedAsState()
+
+                // --- ANIMACIÓN DE TAMAÑO (Con efecto hundimiento) ---
+                val targetSize = when {
+                    isActive && isPressed -> 50.dp // Tamaño hundido al pulsar
+                    isActive -> 60.dp              // Tamaño normal activo
+                    else -> 40.dp                  // Tamaño inactivo
+                }
+
                 val animatedSize by animateDpAsState(
                     targetValue = targetSize,
-                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
                     label = "size"
                 )
 
-                // --- 3. ANIMACIÓN DE OPACIDAD (Alpha) ---
-                // El activo se ve al 100%, los otros un poco transparentes
+                // --- ANIMACIÓN DE OPACIDAD ---
                 val targetAlpha = if (isActive) 1f else 0.6f
                 val animatedAlpha by animateFloatAsState(targetAlpha, label = "alpha")
 
@@ -96,42 +120,61 @@ fun MiniCircularDialLayout(
                     else -> painterResource(id = android.R.drawable.ic_menu_help)
                 }
 
-                // CONTENEDOR PRINCIPAL
+                // El contenedor es un poco más grande que el icono para dar espacio a los anillos
+                val containerSize = animatedSize + 40.dp
+
                 Box(
                     modifier = Modifier
-                        .size(animatedSize)
+                        .size(containerSize)
                         .alpha(animatedAlpha)
-                        .clickable { item.onClick() },
+                        .clip(CircleShape)
+                        .then(
+                            if (isActive) {
+                                Modifier.clickable(
+                                    interactionSource = interactionSource,
+                                    indication = null
+                                ) {
+                                    coroutineScope.launch {
+                                        delay(300)
+                                        item.onClick()
+                                    }
+                                }
+                            } else Modifier
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // A. EL HALO DE COLOR (SOLO SI ESTÁ ACTIVO)
-                    // Aquí aplicamos el "pulseScale" y "pulseAlpha" copiados del grande.
-                    // Usamos el color MORADO (#893471) fijo.
+
+                    // --- DIBUJO DE LOS ANILLOS (Solo si está activo) ---
                     if (isActive) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize() // Llena los 60dp
-                                .scale(pulseScale) // LATIDO AQUÍ
-                                .clip(CircleShape)
-                                .background(
-                                    color = Color(0xFF893471).copy(alpha = pulseAlpha) // MORADO + LATIDO ALPHA
-                                )
-                        )
+                        Canvas(modifier = Modifier.size(animatedSize * 1.4f)) {
+                            val maxRadius = size.minDimension / 2 * 0.9f
+                            val ringColor = Color(0xFF893471) // Color morado fijo solicitado
+
+                            drawCircle(
+                                color = ringColor.copy(alpha = 0.8f),
+                                radius = maxRadius * innerScaleAnim,
+                                style = Stroke(width = innerStrokeWidth.dp.toPx())
+                            )
+
+                            drawCircle(
+                                color = ringColor.copy(alpha = 0.5f),
+                                radius = maxRadius * outerScaleAnim,
+                                style = Stroke(width = outerStrokeWidth.dp.toPx())
+                            )
+                        }
                     }
 
-                    // B. EL ICONO (SIEMPRE NEGRO)
-                    // No cambia de color, solo de tamaño junto con la caja padre.
+                    // --- EL ICONO REAL ---
                     Icon(
                         painter = painter,
                         contentDescription = item.label,
-                        tint = Color.Black, // SIEMPRE NEGRO
-                        modifier = Modifier.size(animatedSize * 0.6f) // 60% del tamaño del contenedor
+                        tint = Color.Black, // Siempre negro
+                        modifier = Modifier.size(animatedSize * 0.6f)
                     )
                 }
             }
         }
     ) { measurables, constraints ->
-        // Bloque de Layout matemático (Idéntico al original)
         val placables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
         val width = constraints.maxWidth
         val height = constraints.maxHeight

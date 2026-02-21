@@ -21,6 +21,7 @@ import mentat.music.com.mentapp.ui.screens.home.HomeScreen
 import mentat.music.com.mentapp.ui.screens.home.viewmodel.HomeViewModel
 import mentat.music.com.mentapp.ui.screens.music.MusicOverviewScreen
 import mentat.music.com.mentapp.ui.screens.webview.WebViewScreen
+import mentat.music.com.mentapp.utils.MentatConstants.ANIM_DURATION
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -28,7 +29,7 @@ import mentat.music.com.mentapp.ui.screens.webview.WebViewScreen
 fun AppNavigation() {
     val navController = rememberNavController()
     // 700ms es un tiempo muy "cinemático" para este efecto de profundidad
-    val animDuration = 700
+
 
     SharedTransitionLayout {
 
@@ -44,17 +45,17 @@ fun AppNavigation() {
                 route = AppScreens.HomeScreen.route,
                 // Al volver a casa: Aparece fundiéndose
                 enterTransition = {
-                    fadeIn(animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION))
                 },
                 // Al irnos de casa: Se oscurece y se va al fondo (escala 0.9)
                 exitTransition = {
-                    fadeOut(animationSpec = tween(animDuration)) +
-                            scaleOut(targetScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION)) +
+                            scaleOut(targetScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 },
                 // Al volver atrás desde otra pantalla: Aparece desde el fondo creciendo
                 popEnterTransition = {
-                    fadeIn(animationSpec = tween(animDuration)) +
-                            scaleIn(initialScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION)) +
+                            scaleIn(initialScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 }
             ) {
                 val homeViewModel: HomeViewModel = viewModel()
@@ -68,19 +69,19 @@ fun AppNavigation() {
             composable(
                 route = AppScreens.MusicOverviewScreen.route,
                 enterTransition = {
-                    fadeIn(animationSpec = tween(animDuration)) +
-                            scaleIn(initialScale = 0.95f, animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION)) +
+                            scaleIn(initialScale = 0.95f, animationSpec = tween(ANIM_DURATION))
                 },
                 exitTransition = {
-                    fadeOut(animationSpec = tween(animDuration)) +
-                            scaleOut(targetScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION)) +
+                            scaleOut(targetScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 },
                 popEnterTransition = {
-                    fadeIn(animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION))
                 },
                 popExitTransition = {
-                    fadeOut(animationSpec = tween(animDuration)) +
-                            scaleOut(targetScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION)) +
+                            scaleOut(targetScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 }
             ) {
                 MusicOverviewScreen(navController = navController)
@@ -90,15 +91,15 @@ fun AppNavigation() {
             composable(
                 route = AppScreens.AlbumDetailScreen.route,
                 enterTransition = {
-                    fadeIn(animationSpec = tween(animDuration)) +
-                            scaleIn(initialScale = 0.95f, animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION)) +
+                            scaleIn(initialScale = 0.95f, animationSpec = tween(ANIM_DURATION))
                 },
                 exitTransition = {
-                    fadeOut(animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION))
                 },
                 popExitTransition = {
-                    fadeOut(animationSpec = tween(animDuration)) +
-                            scaleOut(targetScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION)) +
+                            scaleOut(targetScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 }
             ) { backStackEntry ->
                 val albumId = backStackEntry.arguments?.getString("albumId")
@@ -113,17 +114,17 @@ fun AppNavigation() {
 
                 // Transición: Aparece creciendo suavemente (efecto inmersivo)
                 enterTransition = {
-                    fadeIn(animationSpec = tween(animDuration)) +
-                            scaleIn(initialScale = 0.95f, animationSpec = tween(animDuration))
+                    fadeIn(animationSpec = tween(ANIM_DURATION)) +
+                            scaleIn(initialScale = 0.95f, animationSpec = tween(ANIM_DURATION))
                 },
                 // Al salir: Se desvanece
                 exitTransition = {
-                    fadeOut(animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION))
                 },
                 // Al dar atrás: Se encoge y desvanece
                 popExitTransition = {
-                    fadeOut(animationSpec = tween(animDuration)) +
-                            scaleOut(targetScale = 0.9f, animationSpec = tween(animDuration))
+                    fadeOut(animationSpec = tween(ANIM_DURATION)) +
+                            scaleOut(targetScale = 0.9f, animationSpec = tween(ANIM_DURATION))
                 }
             ) { backStackEntry ->
                 val encodedUrl = backStackEntry.arguments?.getString("url")
