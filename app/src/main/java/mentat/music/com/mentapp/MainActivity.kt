@@ -8,6 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge // ¡Para que la app ocupe toda la pantalla!
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import mentat.music.com.mentapp.ui.navigation.AppNavigation
 import mentat.music.com.mentapp.ui.theme.MentappTheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen // <-- ¡Añade esta!
@@ -44,10 +49,33 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge() // ¡Importante para el fondo inmersivo!
         setContent {
             MentappTheme {
+                // 1. El estado que controla si la app se está cerrando
+                var isAppExiting by remember { mutableStateOf(false) }
+
+                // Obtenemos el contexto para poder cerrar la Activity después
+                val context = LocalContext.current
+                val activity = remember(context) {
+                    var currentContext = context
+                    while (currentContext is android.content.ContextWrapper) {
+                        if (currentContext is android.app.Activity) break
+                        currentContext = currentContext.baseContext
+                    }
+                    currentContext as? android.app.Activity
+                }
+
                 // 2. AQUI LLAMAMOS AL OBTURADOR
-                // Envuelve a toda la navegación para pintar por encima
-                MeliesDialShutter {
-                    AppNavigation()
+                MeliesDialShutter(
+                    isAppExiting = isAppExiting,
+                    onExitAnimationComplete = {
+                        // Cuando el obturador termina su animación de cierre, matamos la app de forma segura
+                        activity?.finish()
+                    }
+                ) {
+                    // Aquí va tu navegación.
+                    // Necesitarás pasarle a AppNavigation una forma de cambiar isAppExiting a true
+                    AppNavigation(
+                        onExitClick = { isAppExiting = true }
+                    )
                 }
             }
         }

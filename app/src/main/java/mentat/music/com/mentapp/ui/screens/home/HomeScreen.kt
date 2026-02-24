@@ -49,7 +49,8 @@ import kotlin.system.exitProcess
 @Composable
 fun HomeScreen(
     navController: NavController,
-    homeViewModel: HomeViewModel = viewModel()
+    homeViewModel: HomeViewModel = viewModel(),
+    onExitClick: () -> Unit // 1. AQUÍ RECIBIMOS LA ORDEN DE APAGADO
 ) {
     // 1. ESTADO UNIFICADO (UI STATE)
     val uiState by homeViewModel.uiState.collectAsState()
@@ -66,6 +67,9 @@ fun HomeScreen(
     val dialScale = remember { Animatable(1.0f) }
 
     var isMainDial by remember { mutableStateOf(true) }
+
+    // CORRECCIÓN: isSpinning debe estar aquí arriba, a salvo de recomposiciones
+    var isSpinning by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val vibrator = rememberVibrator()
@@ -235,28 +239,21 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            // 2.A: DIAL PRINCIPAL (Aquí va el Motion Blur Direccional)
             // 2.A: DIAL PRINCIPAL
             DialLayer(
                 modifier = Modifier
                     .fillMaxSize()
                     .alpha(dialSceneAlpha)
                     .graphicsLayer {
-                    // Mantenemos tus escalas si las hay (en DialLayer no las tienes, en el Box sí)
-                    // scaleX = dialScale.value * dialFlipX.value
-                    // scaleY = dialScale.value
-
-                    // Asignación limpia recomendada por el IDE
-                    renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dialBlur.value > 0.5f) {
-                        androidx.compose.ui.graphics.BlurEffect(
-                            radiusX = dialBlur.value, // SIN multiplicar por density
-                            radiusY = 1f,
-                            edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp
-                        )
-                    } else {
-                        null
-                    }
-                },
+                        // Asignación limpia recomendada por el IDE
+                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dialBlur.value > 0.5f) {
+                            androidx.compose.ui.graphics.BlurEffect(
+                                radiusX = dialBlur.value, // SIN multiplicar por density
+                                radiusY = 1f,
+                                edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp
+                            )
+                        } else null
+                    },
                 currentItems = currentItems,
                 isPortrait = isPortrait,
                 dialTitle = stringResource(R.string.dial_title),
@@ -294,7 +291,8 @@ fun HomeScreen(
                         ) { homeViewModel.setWebMenuOpen(false) }
                 )
             }
-            // 1. CAPA DE LOS DIALES (Giran y tienen Blur)
+
+            // CAPA DE LOS DIALES DEL MENÚ WEB (Giran y tienen Blur)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -329,13 +327,12 @@ fun HomeScreen(
             }
 
 
-            // 2. CAPA DEL BOTÓN (Independiente, nítida y ahora REACTIVA)
+            // CAPA DEL BOTÓN (Independiente, nítida y reactiva)
             if (!uiState.isAnimatingOut && !uiState.isExpansionFinished) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Necesitamos capturar el estado de pulsación para el efecto visual
                     val interactionSource = remember { MutableInteractionSource() }
                     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -352,8 +349,11 @@ fun HomeScreen(
                             scaleY = buttonPressScale
                         },
                         size = 80.dp,
+                        isProcessing = isSpinning,
+                        processingDuration = (DialConstants.FLIP_DURATION * 1.5).toInt(),
                         onClick = {
                             scope.launch {
+                                isSpinning = true
                                 // --- PARTE 1: EL DIAL SE VA ---
                                 launch { dialFlipX.animateTo(0.0f, tween(DialConstants.FLIP_DURATION)) }
                                 launch { dialBlur.animateTo(60f, tween(DialConstants.FLIP_DURATION, easing = FastOutLinearInEasing)) }
@@ -373,6 +373,9 @@ fun HomeScreen(
                                     dialScale.snapTo(1.15f)
                                     dialScale.animateTo(1.0f, bounceSpec)
                                 }
+
+                                delay((DialConstants.FLIP_DURATION / 2).toLong())
+                                isSpinning = false
                             }
                         }
                     )
@@ -383,7 +386,6 @@ fun HomeScreen(
                     }
                 }
             }
-
 
             // 2.C: CARRUSEL DE CONTENIDO (Delegado a ContentLayer)
             ContentLayer(
@@ -416,9 +418,10 @@ fun HomeScreen(
             },
             onExitClick = {
                 vibrator.vibrateClick()
-                val activity = context as? Activity
-                activity?.finishAndRemoveTask()
-                exitProcess(0)
+
+                // 2. ¡MAGIA! En lugar de matar la app de golpe, llamamos a la animación de cierre.
+                // El obturador se cerrará y él mismo se encargará de hacer el finish().
+                onExitClick()
             },
             onLanguageClick = {
                 homeViewModel.toggleLanguage()
@@ -427,14 +430,11 @@ fun HomeScreen(
             onBackClick = {
                 vibrator.vibrateClick()
 
-                // Comprobamos si hay algún menú abierto consultando el estado
                 val isAnyMenuOpen = uiState.isExpansionFinished || uiState.clickedIconIndex != -1 || uiState.selectedWebCategory != null || uiState.isWebMenuOpen
 
                 if (isAnyMenuOpen) {
-                    // El ViewModel gestiona el cierre lógico
                     homeViewModel.handleBackPress()
 
-                    // Animación visual de regreso (si no estamos en el menú web)
                     if (!uiState.isWebMenuOpen) {
                         scope.launch {
                             delay(200)
@@ -443,7 +443,6 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    // Salir de la app
                     backDispatcher?.onBackPressed()
                 }
             }

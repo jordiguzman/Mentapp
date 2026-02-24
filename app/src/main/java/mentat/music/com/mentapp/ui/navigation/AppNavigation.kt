@@ -26,10 +26,11 @@ import mentat.music.com.mentapp.utils.MentatConstants.ANIM_DURATION
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    onExitClick: () -> Unit // 1. Recibimos la orden desde MainActivity
+) {
     val navController = rememberNavController()
     // 700ms es un tiempo muy "cinemático" para este efecto de profundidad
-
 
     SharedTransitionLayout {
 
@@ -61,7 +62,8 @@ fun AppNavigation() {
                 val homeViewModel: HomeViewModel = viewModel()
                 HomeScreen(
                     navController = navController,
-                    homeViewModel = homeViewModel
+                    homeViewModel = homeViewModel,
+                    onExitClick = onExitClick // 2. AQUÍ ESTÁ LA MAGIA: Le pasamos la orden a HomeScreen
                 )
             }
 

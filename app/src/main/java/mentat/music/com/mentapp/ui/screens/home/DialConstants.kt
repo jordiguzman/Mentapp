@@ -26,7 +26,7 @@ object DialConstants {
 
     // --- TIEMPOS DE ANIMACIÓN (ms) ---
     const val TRANSITION_DURATION = 900
-    const val FLIP_DURATION = 400
+    const val FLIP_DURATION = 800
     const val SPRING_STIFFNESS = 90f
     const val SPRING_DAMPING = 0.8f
 

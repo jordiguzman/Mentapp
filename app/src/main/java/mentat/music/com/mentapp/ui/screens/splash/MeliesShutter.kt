@@ -1,4 +1,4 @@
-package mentat.music.com.mentapp.ui.screens.splash // O el paquete donde lo tengas
+package mentat.music.com.mentapp.ui.screens.splash
 
 import android.app.Activity
 import android.content.Context
@@ -28,53 +28,80 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.sqrt
 
-/**
- * EL OBTURADOR "DIAL" SOFISTICADO 🎛️
- * Efecto de apertura de iris con estilo de cristal/metal, bordes blancos y degradados.
- */
 @Composable
 fun MeliesDialShutter(
+    isAppExiting: Boolean,
+    onExitAnimationComplete: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    // CORRECCIÓN DEL ERROR DE CONTEXTO:
-    // En lugar de castear "a lo bruto", usamos la función auxiliar findActivity()
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
 
-    // --- 1. GEOMETRÍA ---
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenWidth = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }
 
-    // Calculamos la diagonal
     val maxRadius = remember(screenWidth, screenHeight) {
         sqrt(screenWidth * screenWidth + screenHeight * screenHeight)
     }
 
-    // --- 2. ANIMACIÓN ---
+    // Empezamos siempre cerrados a cal y canto (0f)
     val irisRadius = remember { Animatable(0f) }
-    var isExiting by remember { mutableStateOf(false) }
 
-    // --- GRADIENTES ESTILO MENTAPP ---
+    // --- LA MAGIA: DETECCIÓN DE FOCO ---
+    val windowInfo = LocalWindowInfo.current
+    var isWindowReady by remember { mutableStateOf(false) }
 
-    // El "Metal" del obturador (Gris muy oscuro)
+    // El sistema nos avisará cuando el Splash Screen desaparezca y la app sea visible
+    LaunchedEffect(windowInfo.isWindowFocused) {
+        if (windowInfo.isWindowFocused && !isWindowReady) {
+            // Un micro-respiro de 50ms (2 o 3 fotogramas) para asegurar el renderizado
+            delay(50)
+            isWindowReady = true
+        }
+    }
+
+    // --- 1. APERTURA (Sincronizada con el sistema) ---
+    LaunchedEffect(isWindowReady) {
+        if (isWindowReady && !isAppExiting) {
+            irisRadius.animateTo(
+                targetValue = maxRadius,
+                animationSpec = tween(
+                    durationMillis = 2000, // Tiempo de apertura a tu gusto
+                    easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+                )
+            )
+        }
+    }
+
+    // --- 2. CIERRE (La salida que ya funciona genial) ---
+    LaunchedEffect(isAppExiting) {
+        if (isAppExiting) {
+            irisRadius.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 800,
+                    easing = FastOutSlowInEasing
+                )
+            )
+            onExitAnimationComplete()
+        }
+    }
+
     val shutterBrush = remember(maxRadius) {
         Brush.radialGradient(
-            colors = listOf(
-                Color(0xFF2B2B2B), // Gris oscuro centro
-                Color(0xFF000000)  // Negro puro esquinas
-            ),
+            colors = listOf(Color(0xFF2B2B2B), Color(0xFF000000)),
             center = Offset(screenWidth / 2, screenHeight / 2),
             radius = maxRadius
         )
     }
 
-    // El "Bisel" (Borde brillante blanco/gris)
     val borderBrush = remember {
         Brush.linearGradient(
             colors = listOf(
@@ -85,60 +112,16 @@ fun MeliesDialShutter(
         )
     }
 
-    // --- 3. SECUENCIA DE APERTURA ---
-    LaunchedEffect(Unit) {
-        // PASO 1: Aseguramos que empieza CERRADO (Radio 0)
-        irisRadius.snapTo(0f)
-
-        // PASO 2: EL RETRASO TÁCTICO (La clave del problema)
-        // Esperamos a que el Splash de Android termine su "show" y se quite.
-        // Si lo pones muy corto, se solapa. Si lo pones muy largo, verás pantalla negra un rato.
-        // 600ms - 800ms suele ser el punto dulce.
-        delay(500)
-
-        // PASO 3: AHORA SÍ, ACCIÓN 🎬
-        irisRadius.animateTo(
-            targetValue = maxRadius,
-            animationSpec = tween(
-                durationMillis = 4800, // Tu velocidad lenta majestuosa
-                easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
-            )
-        )
-    }
-
-    // --- 4. SECUENCIA DE CIERRE ---
-    // (Ahora mismo está desactivada la detección automática,
-    // pero la lógica está lista para cuando la conectemos)
-    LaunchedEffect(isExiting) {
-        if (isExiting) {
-            irisRadius.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = 350,
-                    easing = FastOutSlowInEasing
-                )
-            )
-            activity?.finish() // Ahora sí cierra la app de forma segura
-        }
-    }
-
-    // --- 5. EL DIBUJO ---
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // A) LA APP
         content()
 
-        // B) EL OBTURADOR
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithContent {
                     val currentRadius = irisRadius.value
-
-                    // Si ya está abierto del todo, no dibujamos para ahorrar batería
                     if (currentRadius >= maxRadius * 0.99f) return@drawWithContent
 
-                    // Paso 1: Máscara Inversa (Rectángulo - Círculo)
                     val shutterPath = Path().apply {
                         addRect(Rect(0f, 0f, size.width, size.height))
                         val circlePath = Path().apply {
@@ -147,16 +130,13 @@ fun MeliesDialShutter(
                         op(this, circlePath, PathOperation.Difference)
                     }
 
-                    // Paso 2: Relleno oscuro
                     clipPath(shutterPath) {
                         drawRect(
                             brush = shutterBrush,
-                            // Se hace sutilmente transparente al final
                             alpha = (1f - (currentRadius / maxRadius * 0.3f)).coerceIn(0f, 1f)
                         )
                     }
 
-                    // Paso 3: Anillo Metálico
                     drawCircle(
                         brush = borderBrush,
                         radius = currentRadius,
@@ -169,9 +149,8 @@ fun MeliesDialShutter(
     }
 }
 
-// --- FUNCIÓN AUXILIAR PARA EL CONTEXTO (La solución a tu error) ---
 private fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
-    is ContextWrapper -> baseContext.findActivity() // Pelamos la cebolla recursivamente
+    is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
